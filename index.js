@@ -73,6 +73,10 @@ app.use("/views/css", express.static(path.join(__dirname, "views/css")));
 app.use("/views/js", express.static(path.join(__dirname, "views/js")));
 
 // Body parser
+app.use("/webhook", (req, res, next) => {
+  console.log(`📥 Incoming: ${req.method} ${req.path}`);
+  next();
+});
 app.use("/webhook", express.raw({ type: "application/json" })); // อยู่บนสุด
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -1427,12 +1431,15 @@ const setupWebhooks = async () => {
             const accessToken = lineConfig.channelAccessToken
             const client = new line.Client(lineConfig);
             const route = `/webhook/${shop.prefix}/${channelID}.bot`;
+            console.log(`📌 Registered webhook: ${route}`);
 
             // กำหนด Middleware ให้ใช้ `express.raw()` เฉพาะ Webhook เท่านั้น
             app.post(
-              route, // ใช้ route จากข้างบนตรง ๆ เลย
+              route,
               setCorrectSignature(lineConfig.channelSecret),
+              (err, req, res, next) => { console.error(`❌ setCorrectSignature error [${route}]:`, err?.message); next(err); },
               line.middleware(lineConfig),
+              (err, req, res, next) => { console.error(`❌ line.middleware error [${route}]:`, err?.message); res.status(err?.status || 500).send(err?.message || "Error"); },
               async (req, res) => {
                 const events = req.body.events || [];
                 await Promise.all(
