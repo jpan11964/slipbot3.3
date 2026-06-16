@@ -1,5 +1,6 @@
 // savePhoneNumber.js
 import Phone from '../models/Phone.js';
+import Customer from '../models/Customer.js';
 import SlipResult from '../models/SlipResult.js';
 import { broadcastLog } from "../index.js";
 import { broadcastPhoneUpdate } from "../index.js";
@@ -62,12 +63,20 @@ export async function checkAndSavePhoneNumber(text, userId, prefix, linename) {
     const existing = await Phone.findOne({ userId });
     if (existing) return;
 
+    // ถ้าไม่ได้ส่ง linename มา (เช่น admin บันทึกเบอร์เองผ่าน /api/save-phone)
+    // → หาจาก Customer record, fallback เป็น prefix กัน validation พัง (linename required)
+    let resolvedLinename = linename;
+    if (!resolvedLinename) {
+      const cust = await Customer.findOne({ userId }).lean();
+      resolvedLinename = cust?.linename || prefix;
+    }
+
     const newLog = new Phone({
       userId,
       phoneNumber,
       prefix,
       user,
-      linename,
+      linename: resolvedLinename,
     });
 
     broadcastPhoneUpdate(userId, phoneNumber, lineName);
