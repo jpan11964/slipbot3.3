@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
 import { broadcastLog } from "../../../index.js";
+import { sendTelegram } from "../../../utils/telegram.js";
 
 const envFile = process.env.NODE_ENV === "production" ? "info.prod.env" : "info.dev.env"
 const envPath = path.join(process.cwd(), envFile)
@@ -13,20 +14,16 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ===== แจ้งเตือน Telegram เมื่อโควต้า GPT หมด =====
-async function sendTelegramAlert(message) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: message }),
-    });
-  } catch (err) {
-    console.error('❌ Telegram alert ล้มเหลว:', err.message);
-  }
+// ===== แจ้งเตือน Telegram เมื่อโควต้า GPT หมด (บอท GPT) — จำกัดชั่วโมงละครั้ง =====
+const GPT_429_ALERT_MS = 60 * 60 * 1000; // 1 ชั่วโมง
+let lastGpt429AlertAt = 0;
+
+function sendTelegramAlert(message) {
+  return sendTelegram(
+    process.env.TELEGRAM_BOT_GPT_TOKEN,
+    process.env.TELEGRAM_GPT_CHAT_ID,
+    message
+  );
 }
 
 const categoryMap = {
@@ -248,9 +245,13 @@ async function askGPT(userMessage) {
 
   } catch (error) {
     if (error.status === 429) {
-      console.warn(`❌ โค้วต้า GPT หมด (429 Rate Limit)`);
-      broadcastLog(`❌ โค้วต้า GPT หมด (429 Rate Limit)`);
-      sendTelegramAlert('❌ SlipBot แจ้งเตือน: โควต้า GPT หมด (429 Rate Limit)\nกรุณาตรวจสอบ OpenAI account');
+      // แจ้งเตือนได้ชั่วโมงละครั้ง (กันแจ้งรัวทุกข้อความ)
+      if (Date.now() - lastGpt429AlertAt >= GPT_429_ALERT_MS) {
+        lastGpt429AlertAt = Date.now();
+        console.warn(`❌ โค้วต้า GPT หมด (429 Rate Limit)`);
+        broadcastLog(`❌ โค้วต้า GPT หมด (429 Rate Limit)`);
+        sendTelegramAlert('⚠️ โควต้า GPT หมด (429 Rate Limit)\nกรุณาตรวจสอบ OpenAI account');
+      }
       return '';
     }
 

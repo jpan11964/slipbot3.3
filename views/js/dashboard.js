@@ -1,21 +1,14 @@
-window.visibleCount = 100;
-window.LOAD_STEP = 100;
+window.INITIAL_LOAD = 200;     // แสดงเริ่มต้น 200 รายการ
+window.LOAD_MORE = 100;        // เลื่อนถึงล่างสุด → โหลดเพิ่มทีละ 100
 window.isLoadingMore = false;
 window.allLoaded = false;
-window.slipResults = [];
+window.slipResults = [];       // ข้อมูลทั้งหมดที่โหลดมา (ล่าสุด→เก่า)
+window.serverLoadedCount = 0;  // จำนวนที่โหลดจาก server แล้ว (ใช้คำนวณ skip — ไม่นับสลิปใหม่จาก SSE)
 
-// ===== ตัวกรองร้าน (อ่านค่าที่เลือกจากหน้าหลักผ่าน localStorage) =====
-// ไม่ประกาศ const/let ที่ top-level เพราะ main.js ก็ประกาศ SHOP_FILTER_KEY ใน global scope เดียวกัน
-// (สองไฟล์โหลดใน global scope เดียวกัน — ประกาศชื่อซ้ำจะ SyntaxError) จึงใช้ string ตรงๆ
+// ===== ตัวกรองร้าน (อ่านค่าต่อ user จาก window.__me ที่โหลดมาจาก /api/me) =====
 function getDisplayedPrefixes() {
-  try {
-    const raw = localStorage.getItem("displayedShopPrefixes");
-    if (!raw) return null; // null = แสดงทุกร้าน
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : null;
-  } catch {
-    return null;
-  }
+  const sel = window.__me?.displayedShops;
+  return Array.isArray(sel) ? sel : null; // null = แสดงทุกร้าน
 }
 
 function isSlipDisplayed(prefix) {
@@ -25,8 +18,8 @@ function isSlipDisplayed(prefix) {
 
 
 function clearLoadingRow() {
-  const loadingRow = document.getElementById("loading-row");
-  if (loadingRow) loadingRow.remove();
+  document.getElementById("loading-row")?.remove();
+  document.getElementById("empty-row")?.remove();
 }
 
 function showEmptyRow(text) {
@@ -35,61 +28,98 @@ function showEmptyRow(text) {
   clearLoadingRow();
   if (tbody.querySelector("tr")) return; // มีแถวข้อมูลอยู่แล้ว ไม่ต้องแสดง
   const tr = document.createElement("tr");
+  tr.id = "empty-row";
   tr.innerHTML = `<td colspan="9" style="text-align:center;color:#94a3b8;padding:24px;">${text}</td>`;
   tbody.appendChild(tr);
 }
 
+// สร้าง HTML ของแถวสลิป 1 แถว
+function buildSlipRowHTML(r) {
+  return `
+    <td>${r.time || "-"}</td>
+    <td title="${r.shop || "-"}">${truncateText(r.shop || "-", 10)}</td>
+    <td class="line-name-cell" data-user-id="${r.userId}" title="${r.lineName || "-"}">
+      ${truncateText(r.lineName || "-", 12)}
+    </td>
+    <td title="${r.text || "-"}">${truncateText(r.text || "-", 10)}</td>
+    <td>${renderPhoneColumn(r.userId, r.phoneNumber, r.prefix)}</td>
+    <td class="${getStatusClass(r.status)}">${r.status || "-"}</td>
+    <td>${r.amount != null ? r.amount.toLocaleString() : "-"}</td>
+    <td class="${getStatusReply(r.response)}">${r.response || "-"}</td>
+    <td>${renderRefOrReply(r) || "-"}</td>
+  `;
+}
+
+// ต่อท้ายแถว (ของเก่าอยู่ล่าง) ตามตัวกรองร้านที่ผู้ใช้เลือก
+function appendSlipRows(rows) {
+  const tbody = document.getElementById("slip-results-body");
+  if (!tbody) return;
+  clearLoadingRow();
+  const frag = document.createDocumentFragment();
+  rows.filter(r => isSlipDisplayed(r.prefix)).forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = buildSlipRowHTML(r);
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+}
+
+// โหลดครั้งแรก 200 รายการล่าสุด
 async function loadSlipResults() {
+  window.allLoaded = false;
+  window.isLoadingMore = false;
   try {
-    const res = await fetch("/api/slip-results");
+    const res = await fetch(`/api/slip-results?skip=0&limit=${window.INITIAL_LOAD}`);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error("ไม่ใช่ array");
 
-    data.sort((a, b) => new Date(b.createdAt || b.time) - new Date(a.createdAt || a.time));
-    window.slipResults = data;
-    renderSlipResults(0, visibleCount);
+    window.slipResults = data;                 // ล่าสุดก่อน (server sort DESC)
+    window.serverLoadedCount = data.length;
+    window.allLoaded = data.length < window.INITIAL_LOAD;
 
-    // ถ้าหลัง render แล้วไม่มีแถวเลย → แจ้งให้รู้ (ไม่ค้างที่ "กำลังโหลด...")
     const tbody = document.getElementById("slip-results-body");
-    if (tbody && !tbody.querySelector("tr")) {
+    if (tbody) tbody.innerHTML = "";
+    appendSlipRows(data);
+
+    const tb = document.getElementById("slip-results-body");
+    if (tb && !tb.querySelector("tr")) {
       showEmptyRow(getDisplayedPrefixes() ? "ไม่มีข้อมูลตามตัวกรองร้านที่เลือก" : "ยังไม่มีข้อมูลสลิป");
     }
+    requestAnimationFrame(fillIfNeeded); // กรองร้านแล้วแถวน้อย → โหลดเพิ่มจนเต็มจอ
   } catch (err) {
     console.error("❌ โหลด slip ล้มเหลว:", err);
     showEmptyRow("โหลดข้อมูลไม่สำเร็จ");
   }
 }
 
-function renderSlipResults(start, end) {
-  const tbody = document.getElementById("slip-results-body");
-  const loadingRow = document.getElementById("loading-row");
-  if (!tbody) return;
-
-  if (loadingRow) loadingRow.remove();
-
-  // กรองเฉพาะร้านที่เลือกแสดง (null = แสดงทุกร้าน)
-  const filtered = window.slipResults.filter(r => isSlipDisplayed(r.prefix));
-  const data = filtered.slice(start, end);
-  data.forEach(r => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td>${r.time || "-"}</td>
-      <td title="${r.shop || "-"}">${truncateText(r.shop || "-", 10)}</td>
-      <td class="line-name-cell" data-user-id="${r.userId}" title="${r.lineName || "-"}">
-        ${truncateText(r.lineName || "-", 12)}
-      </td>
-      <td title="${r.text || "-"}">${truncateText(r.text || "-", 10)}</td>
-      <td>${renderPhoneColumn(r.userId, r.phoneNumber, r.prefix)}</td>
-      <td class="${getStatusClass(r.status)}">${r.status || "-"}</td>
-      <td>${r.amount != null ? r.amount.toLocaleString() : "-"}</td>
-      <td class="${getStatusReply(r.response)}">${r.response || "-"}</td>
-      <td>${renderRefOrReply(r) || "-"}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+// โหลดเพิ่มทีละ 100 (ของเก่ากว่า) เมื่อเลื่อนถึงล่างสุด
+async function loadMoreSlips() {
+  if (window.isLoadingMore || window.allLoaded) return;
+  window.isLoadingMore = true;
+  try {
+    const res = await fetch(`/api/slip-results?skip=${window.serverLoadedCount}&limit=${window.LOAD_MORE}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length) {
+      window.slipResults.push(...data);        // ต่อท้าย (เก่ากว่า)
+      window.serverLoadedCount += data.length;
+      appendSlipRows(data);
+    }
+    if (!Array.isArray(data) || data.length < window.LOAD_MORE) window.allLoaded = true;
+  } catch (err) {
+    console.error("❌ โหลดสลิปเพิ่มล้มเหลว:", err);
+  } finally {
+    window.isLoadingMore = false;
+    requestAnimationFrame(fillIfNeeded); // ถ้ายังไม่เต็มจอ (เช่นกรองร้าน) ให้โหลดต่อ
+  }
 }
-  
+
+// ถ้าเนื้อหายังไม่เต็มจน scroll ไม่ติด → โหลดเพิ่มจนเต็มหรือหมด
+function fillIfNeeded() {
+  const c = document.getElementById("dashboard-scroll");
+  if (!c || window.allLoaded || window.isLoadingMore) return;
+  if (c.scrollHeight <= c.clientHeight + 10) loadMoreSlips();
+}
+
 
 function getStatusClass(status) {
   switch (status) {
@@ -132,25 +162,17 @@ function getStatusReply(status) {
 
 function setupScrollListener() {
   const container = document.getElementById("dashboard-scroll");
-  const loadingMsg = document.getElementById("loading-message");
-
   if (!container || container.dataset.scrollBound) return;
   container.dataset.scrollBound = "1";
 
+  const head = document.getElementById("dashboard-head");
+
   container.addEventListener("scroll", () => {
-    if (
-      !isLoadingMore &&
-      !allLoaded &&
-      container.scrollTop + container.clientHeight >= container.scrollHeight - 20
-    ) {
-      isLoadingMore = true;
-      if (loadingMsg) loadingMsg.innerText = "กำลังโหลดเพิ่มเติม...";
-      setTimeout(() => {
-        const previousCount = visibleCount;
-        visibleCount += LOAD_STEP;
-        renderSlipResults(previousCount, visibleCount);
-        isLoadingMore = false;
-      }, 500);
+    // เลื่อนแนวนอน → ให้หัวตารางเลื่อนตาม (คอลัมน์ตรงกัน)
+    if (head) head.scrollLeft = container.scrollLeft;
+    // เลื่อนถึงใกล้ล่างสุด → โหลดของเก่าเพิ่มทีละ 100
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 40) {
+      loadMoreSlips();
     }
   });
 }
@@ -224,6 +246,7 @@ function connectSSE() {
         if (!isSlipDisplayed(newSlip.prefix)) return;
         const tbody = document.getElementById("slip-results-body");
         if (tbody) {
+          clearLoadingRow(); // เคลียร์ placeholder "ยังไม่มีข้อมูล" ถ้ามี
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${newSlip.time || "-"}</td>

@@ -24,11 +24,19 @@
   overflow: hidden;
 }
 
-/* scroll container เดียว — เลื่อนทั้งแนวตั้ง/แนวนอนพร้อมกัน หัวตาราง sticky ติดบน */
+/* หัวตาราง (ไม่เลื่อนแนวตั้ง) — เผื่อพื้นที่ scrollbar ด้วย scrollbar-gutter ให้คอลัมน์ตรงกับ body */
+.dashboard-head {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  font-size: 13px;
+}
+
+/* body เลื่อนแนวตั้ง/แนวนอน — scrollbar เริ่มที่นี่ (ใต้หัวตาราง) */
 .dashboard-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   font-size: 13px;
 }
 
@@ -54,9 +62,6 @@
 }
 
 .dashboard-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   background: #0c1628;
   color: #8fa3bc;
   padding: 13px 12px;

@@ -9,6 +9,7 @@ import fs from "fs";
 import { loadCredentialsFromDB } from "./credentials.js";
 import Credentials from "./models/Temp.js";
 import { ALL_PAGES, ALL_SHOP_BUTTONS, ALL_SETBOT_FUNCS, ALL_ADMIN_PAGES, PAGE_LABELS, SHOP_BUTTON_LABELS, SETBOT_FUNC_LABELS, ADMIN_PAGE_LABELS, ROUTE_BUTTON_MAP, ROUTE_SETBOT_MAP, getUserPermissions } from "./utils/permissions.js";
+import { startSlip2goMonitor } from "./utils/slip2goMonitor.js";
 import * as crypto from "crypto";
 import { handleEvent } from "./handlers/handleEvent.js";
 import { loadSettings, saveSettings, reloadSettings } from './utils/settingsManager.js';
@@ -42,7 +43,7 @@ const baseURL = process.env.URL || `http://localhost:${PORT}`;
 
 const app = express();
 const clients = [];
-const MAX_LOGS = 200;
+const MAX_LOGS = 1000; // เก็บ log ในหน่วยความจำมากขึ้น เพื่อให้เลื่อนดู log เก่าได้
 const logHistory = [];
 const logClients = [];
 
@@ -197,18 +198,20 @@ let shopData = [];
 // ║                    ~1236  POST /api/upload-send-image-line  ║
 // ╚══════════════════════════════════════════════════════════════╝
 
-// Endpoint สำหรับส่ง Logs แบบเรียลไทม์
+// ประวัติ log แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
+app.get("/api/logs-history", (req, res) => {
+  const skip = Math.max(0, parseInt(req.query.skip) || 0);
+  const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 200));
+  const newestFirst = logHistory.slice().reverse(); // logHistory เก็บเก่า→ใหม่ จึง reverse เป็นใหม่→เก่า
+  res.json(newestFirst.slice(skip, skip + limit));
+});
+
+// Endpoint สำหรับสตรีม log "ใหม่" แบบเรียลไทม์ (ประวัติเก่าโหลดผ่าน /api/logs-history)
 app.get("/api/logs", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
-
-  // ส่ง logs ที่มีอยู่ทั้งหมดให้ client ใหม่
-  const currentLogs = logHistory.slice(-MAX_LOGS);
-  currentLogs.forEach(log => {
-    res.write(`data: ${log}\n\n`);
-  });
 
   logClients.push(res);
 
@@ -416,17 +419,17 @@ app.post("/api/slip-results", async (req, res) => {
   }
 });
 
-// GET: ดึง slip ล่าสุด 100 รายการ (ภายใน 24 ชม.)
+// GET: ดึง slip ภายใน 24 ชม. แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
 app.get("/api/slip-results", async (req, res) => {
   try {
-    const now = new Date();
-    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+    const skip = Math.max(0, parseInt(req.query.skip) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const results = await SlipResult.find({
-      createdAt: { $gte: oneDayAgo }
-    })
-      .sort({ createdAt: -1 })
-      .limit(100);
+    const results = await SlipResult.find({ createdAt: { $gte: oneDayAgo } })
+      .sort({ createdAt: -1 })   // ล่าสุดก่อน
+      .skip(skip)
+      .limit(limit);
 
     res.json(results);
   } catch (err) {
@@ -500,11 +503,49 @@ app.get("/", isAuthenticated, (req, res) => {
 });
 
 
-// ข้อมูลผู้ใช้ที่ล็อกอินอยู่ + สิทธิ์ (ให้ frontend เอาไปซ่อน/แสดงปุ่มและเมนู)
+// อ่านตัวกรองร้านที่ผู้ใช้คนนี้เลือกไว้ (array = เฉพาะร้านนั้น, null = แสดงทุกร้าน)
+async function getUserDisplayedShops(role, username) {
+  try {
+    const data = await Credentials.findOne();
+    const arr = Array.isArray(data?.[role]) ? data[role] : [];
+    const user = arr.find(u => u.username === username);
+    return Array.isArray(user?.displayedShops) ? user.displayedShops : null;
+  } catch {
+    return null;
+  }
+}
+
+// ข้อมูลผู้ใช้ที่ล็อกอินอยู่ + สิทธิ์ + ตัวกรองร้านของผู้ใช้คนนี้
 app.get("/api/me", isAuthenticated, async (req, res) => {
   const { username, role } = req.session.user;
   const permissions = await getUserPermissions(role, username);
-  res.json({ username, role, permissions });
+  const displayedShops = await getUserDisplayedShops(role, username);
+  res.json({ username, role, permissions, displayedShops });
+});
+
+// บันทึกตัวกรองร้านต่อผู้ใช้ — { prefixes: [...] } = เฉพาะร้านนั้น, { prefixes: null } = แสดงทุกร้าน
+app.post("/api/my-shop-filter", isAuthenticated, async (req, res) => {
+  const { username, role } = req.session.user;
+  const { prefixes } = req.body || {};
+  try {
+    if (Array.isArray(prefixes)) {
+      await Credentials.updateOne(
+        {},
+        { $set: { [`${role}.$[u].displayedShops`]: prefixes.map(String) } },
+        { arrayFilters: [{ "u.username": username }] }
+      );
+    } else {
+      await Credentials.updateOne(
+        {},
+        { $unset: { [`${role}.$[u].displayedShops`]: "" } },
+        { arrayFilters: [{ "u.username": username }] }
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ บันทึกตัวกรองร้านล้มเหลว:", err.message);
+    res.status(500).json({ success: false });
+  }
 });
 
 // สำหรับโหลดเนื้อหาย่อย เช่น main.html ฯลฯ
@@ -1788,6 +1829,7 @@ app.listen(PORT, async () => {
     await migrateRoleToUser();
     await loadBankAccounts();
     await setupWebhooks();
+    startSlip2goMonitor(); // เริ่มมอนิเตอร์โควต้า Slip2Go + แจ้งเตือน Telegram
     console.log("All services initialized");
   } catch (err) {
     console.error("Initialization failed:", err);

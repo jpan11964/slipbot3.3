@@ -662,24 +662,22 @@ function showAlertMessage(message, elementId = "alertMessageEditShop", isSuccess
 }
 
 // ฟังก์ชันหลัก โหลดร้านค้า + render
-// ===== ตัวกรองเลือกร้านที่แสดง (ใช้ร่วมกับหน้า dashboard ผ่าน localStorage) =====
-const SHOP_FILTER_KEY = "displayedShopPrefixes";
-
+// ===== ตัวกรองเลือกร้านที่แสดง (เก็บต่อ user ใน DB ผ่าน /api/me + /api/my-shop-filter) =====
 // คืน array ของ prefix ที่เลือก หรือ null = แสดงทุกร้าน (รวมร้านที่เพิ่มใหม่ภายหลัง)
 function getDisplayedPrefixes() {
-    try {
-        const raw = localStorage.getItem(SHOP_FILTER_KEY);
-        if (!raw) return null;
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr : null;
-    } catch {
-        return null;
-    }
+    const sel = window.__me?.displayedShops;
+    return Array.isArray(sel) ? sel : null;
 }
 
 function setDisplayedPrefixes(prefixes) {
-    if (!prefixes) localStorage.removeItem(SHOP_FILTER_KEY);
-    else localStorage.setItem(SHOP_FILTER_KEY, JSON.stringify(prefixes));
+    const value = Array.isArray(prefixes) ? prefixes : null;
+    if (window.__me) window.__me.displayedShops = value; // อัปเดตในหน่วยความจำทันที (dashboard อ่านต่อได้)
+    // บันทึกลง DB ต่อ user (ไม่กระทบ user อื่น + คงอยู่ข้ามอุปกรณ์)
+    fetch("/api/my-shop-filter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefixes: value })
+    }).catch(err => console.error("บันทึกตัวกรองร้านล้มเหลว:", err));
 }
 
 function isShopDisplayed(prefix) {

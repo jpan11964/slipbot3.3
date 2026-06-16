@@ -2,8 +2,8 @@
   <h1 class="page-title">แดชบอร์ดตรวจสลิป</h1>
 
   <div class="dashboard-container">
-    <!-- ตารางเดียว หัว sticky — หัวกับเนื้อหาใช้ table เดียวกัน คอลัมน์ตรงกันเสมอ -->
-    <div class="dashboard-scroll" id="dashboard-scroll">
+    <!-- หัวตารางแยกออกจากส่วน scroll → scrollbar เริ่มที่ใต้หัว (จัดคอลัมน์ตรงด้วย scrollbar-gutter) -->
+    <div class="dashboard-head" id="dashboard-head">
       <table class="dashboard-table">
         <thead>
           <tr>
@@ -18,6 +18,10 @@
             <th>REF/REPLY</th>
           </tr>
         </thead>
+      </table>
+    </div>
+    <div class="dashboard-scroll" id="dashboard-scroll">
+      <table class="dashboard-table">
         <tbody id="slip-results-body">
           <tr id="loading-row">
             <td colspan="9" style="text-align:center; font-weight: bold; color: #555;">

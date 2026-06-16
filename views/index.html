@@ -155,7 +155,6 @@
             }
             if (page === "dashboard" && typeof initDashboardSlip === "function") {
               initDashboardSlip()
-              setupSSE()
             }
             if (page === "permissions" && typeof initPermissionsPage === "function") {
               initPermissionsPage()
@@ -170,52 +169,60 @@
 
           if (page === "logs") {
             const logsContainer = document.getElementById("logs")
-            const eventSource = new EventSource("/api/logs")
-            const MAX_LOGS = 200
+            const scrollEl = logsContainer.closest(".logs-wrapper") || logsContainer
+            let logsLoaded = 0
+            let logsAllLoaded = false
+            let logsLoading = false
 
-            eventSource.onmessage = (event) => {
-              if (event.data) {
-                const logEntry = document.createElement("div")
-                logEntry.className = "log-entry"
-                logEntry.textContent = event.data
-                logsContainer.appendChild(logEntry)
-
-                while (logsContainer.children.length > MAX_LOGS) {
-                  logsContainer.firstElementChild.remove()
-                }
-
-                logsContainer.scrollTop = logsContainer.scrollHeight
-              }
+            function makeLogEntry(text, isError) {
+              const el = document.createElement("div")
+              el.className = "log-entry" + (isError ? " error" : "")
+              el.textContent = text
+              return el
             }
 
-            eventSource.onerror = () => {
-              const errorEntry = document.createElement("div")
-              errorEntry.className = "log-entry error"
-              errorEntry.textContent = "การเชื่อมต่อมีปัญหา กำลังเชื่อมต่อใหม่..."
-              logsContainer.appendChild(errorEntry)
-            }
-          }
-
-          function setupSSE() {
-            if (window._sseConnected) return
-            const sse = new EventSource("/events")
-            sse.onopen = () => console.log("SSE opened")
-            sse.onerror = e => console.error("SSE error", e)
-            sse.onmessage = (e) => {
+            // โหลดประวัติ log (ใหม่→เก่า) — initial 200, เลื่อนถึงล่างสุดโหลดเพิ่มทีละ 100
+            async function loadLogsHistory(initial) {
+              if (logsLoading || logsAllLoaded) return
+              logsLoading = true
               try {
-                const newSlip = JSON.parse(e.data)
-                window.slipResults = window.slipResults || []
-                window.slipResults.unshift(newSlip)
-                const tbody = document.getElementById("slip-results-body")
-                if (tbody) {
-                  tbody.innerHTML = ""
-                  renderSlipResults(0, window.visibleCount || 100)
+                const limit = initial ? 200 : 100
+                const res = await fetch(`/api/logs-history?skip=${logsLoaded}&limit=${limit}`)
+                const data = await res.json()
+                if (Array.isArray(data)) {
+                  data.forEach(text => logsContainer.appendChild(makeLogEntry(text))) // ใหม่อยู่บน เก่าต่อท้ายลงล่าง
+                  logsLoaded += data.length
+                  if (data.length < limit) logsAllLoaded = true
                 }
               } catch (err) {
-                console.error("Error parsing SSE:", err)
+                console.error("โหลด log ล้มเหลว", err)
+              } finally {
+                logsLoading = false
               }
             }
-            window._sseConnected = true
+
+            loadLogsHistory(true)
+
+            scrollEl.addEventListener("scroll", () => {
+              if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 40) {
+                loadLogsHistory(false)
+              }
+            })
+
+            // log ใหม่แบบเรียลไทม์ → แทรกบนสุด
+            const eventSource = new EventSource("/api/logs")
+            eventSource.onmessage = (event) => {
+              if (event.data) {
+                logsContainer.insertBefore(makeLogEntry(event.data), logsContainer.firstChild)
+                logsLoaded++ // log ใหม่ดันประวัติลง 1 → ปรับ skip ให้ตรง
+              }
+            }
+            eventSource.onerror = () => {
+              logsContainer.insertBefore(
+                makeLogEntry("การเชื่อมต่อมีปัญหา กำลังเชื่อมต่อใหม่...", true),
+                logsContainer.firstChild
+              )
+            }
           }
         })
         .catch(err => {
