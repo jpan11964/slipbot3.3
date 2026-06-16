@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/views/css/logs.css">
   <link rel="stylesheet" href="/views/css/permissions.css">
   <link rel="stylesheet" href="/views/css/prefixes.css">
+  <link rel="stylesheet" href="/views/css/customers.css">
 </head>
 <body>
   <aside class="sidebar">
@@ -35,6 +36,10 @@
       <li data-page="dashboard" onclick="navigateTo(event, 'dashboard')" hidden>
         <i class="bi bi-bar-chart-line"></i>
         <span>การทำงานบอท</span>
+      </li>
+      <li data-page="customers" onclick="navigateTo(event, 'customers')" hidden>
+        <i class="bi bi-people"></i>
+        <span>จัดการข้อมูลลูกค้า</span>
       </li>
       <li data-page="logs" onclick="navigateTo(event, 'logs')" hidden>
         <i class="bi bi-terminal"></i>
@@ -164,6 +169,9 @@
             }
             if (page === "settings" && typeof loadSettings === "function") {
               loadSettings()
+            }
+            if (page === "customers" && typeof initCustomersPage === "function") {
+              initCustomersPage()
             }
           }
 

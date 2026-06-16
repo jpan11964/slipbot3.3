@@ -3,8 +3,8 @@
 import { sendTelegram } from "./telegram.js";
 
 const ACCOUNT_INFO_URL = "https://connect.slip2go.com/api/account/info";
-const CHECK_INTERVAL_MS = 3 * 60 * 1000; // เช็คทุก 5 นาที
-const ZERO_REPEAT_MS = 60 * 60 * 1000;   // เหลือ 0 → เตือนซ้ำทุก 1 ชั่วโมง
+const CHECK_INTERVAL_MS = 3 * 60 * 1000; // เช็คทุก 3 นาที
+const ZERO_REPEAT_MS = 30 * 60 * 1000;   // เหลือ 0 → เตือนซ้ำทุก 30 นาที
 const THRESHOLDS = [300, 100, 50];  // แจ้งครั้งเดียวต่อระดับ (0 จัดการแยก)
 
 const alerted = new Set(); // ระดับที่แจ้งไปแล้ว
@@ -83,7 +83,7 @@ export async function checkSlip2goQuota() {
   // เหลือ 0 หรือติดลบ → เตือนซ้ำทุกชั่วโมง
   if (quota <= 0) {
     if (Date.now() - lastZeroAlertAt >= ZERO_REPEAT_MS) {
-      await notify(`🛑 โควต้า Slip2Go หมดแล้ว (estimatedQuotaSlip = ${quota})\nกรุณาเติมเครดิตด่วน`);
+      await notify(`🛑 โควต้า Slip2Go หมดแล้ว \nกรุณาเติมเครดิต`);
       lastZeroAlertAt = Date.now();
     }
     THRESHOLDS.forEach(t => alerted.add(t)); // มาร์คทุกระดับว่าแจ้งแล้ว

@@ -24,10 +24,12 @@
   overflow: hidden;
 }
 
-/* หัวตาราง (ไม่เลื่อนแนวตั้ง) — เผื่อพื้นที่ scrollbar ด้วย scrollbar-gutter ให้คอลัมน์ตรงกับ body */
+/* หัวตาราง (ไม่เลื่อนแนวตั้ง) — เผื่อพื้นที่ scrollbar ด้วย scrollbar-gutter ให้คอลัมน์ตรงกับ body
+   พื้นหลังเข้มเพื่อให้แถบ gutter ที่เผื่อไว้กลมกลืนกับหัวตาราง (ไม่เป็นรอยขาว) */
 .dashboard-head {
   overflow: hidden;
   scrollbar-gutter: stable;
+  background: #0c1628;
   font-size: 13px;
 }
 
@@ -144,6 +146,18 @@
   border-color: var(--blue);
   background: var(--white);
   box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+/* เบอร์ที่มีอยู่แล้ว — ชี้เมาส์ขึ้นเส้นประ (บอกว่าคลิกแก้ไขได้) */
+.phone-span {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.phone-span:hover {
+  color: var(--blue-dark);
+  border-bottom-color: var(--blue);
 }
 
 /* สีสถานะการตรวจสลิป + การตอบกลับ — scope ใต้ td เพื่อให้ชนะ .dashboard-table tbody td

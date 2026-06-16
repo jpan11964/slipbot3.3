@@ -1,7 +1,8 @@
 // handlerEvent.js
-import Shop from '../models/Shop.js';                     
-import { handleImageEvent } from './handleImage.js';      
+import Shop from '../models/Shop.js';
+import { handleImageEvent } from './handleImage.js';
 import { handleTextEvent } from './handleText.js';
+import { recordCustomer } from '../utils/customerStore.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';     
@@ -37,6 +38,10 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 async function handleEvent(event, client, prefix, linename, accessToken, baseURL) {
+  // บันทึกลูกค้าทุกคนที่ทักมา (ไม่ว่ามีเบอร์หรือไม่ ไม่ซ้ำตาม userId)
+  const customerId = event.source?.userId;
+  if (customerId) recordCustomer({ userId: customerId, prefix, linename });
+
   const shop = await Shop.findOne({ prefix });
 
   // ตรวจ shop ก่อนอ่านค่า (กัน TypeError ถ้า shop = null)

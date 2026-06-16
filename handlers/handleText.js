@@ -8,6 +8,7 @@ import { getTime, clearUserTimeout, hasUserSentImage, hasUserSentNormalImage, se
          setUserSentActivity, hasUserSentSentActivity, hasUserSentComplain, setUserSentComplain, hasBotSentComplain, setBotSentComplain, setBotSentOffensive, hasBotSentOffensive, setUserSentOffensive, hasUserSentOffensive,  hasUserSentLossAmountImage, hasUserSentSlip, hasBotSentGreeting, setBotSentGreeting,
          isWithin15min, isWithin1min, clearUserMessageHistory, waitTimeouts, userMessageHistory } from "./handleEvent.js";
 import { getLineProfile } from "../utils/getLineProfile.js";
+import { recordCustomer } from "../utils/customerStore.js";
 import { checkAndSavePhoneNumber } from "../utils/savePhoneNumber.js";
 import { reportResultToAPI } from "../utils/slipResultManager.js";
 import { broadcastLog } from "../index.js";
@@ -135,6 +136,7 @@ async function handleReply(userId, event, replyToken, client, category, prefix, 
     const thaiTime = dayjs().tz("Asia/Bangkok").format("HH:mm") + " น.";
     const phoneNumber = profile?.phoneNumber || "-";
     const lineName = profile?.displayName || "-";
+    recordCustomer({ userId, prefix, linename, displayName: profile?.displayName }); // เก็บชื่อโปรไฟล์ลูกค้า
 
     if (category !== 'offensive') {
       setUserSentAnyTextisnotoffensive(userId);

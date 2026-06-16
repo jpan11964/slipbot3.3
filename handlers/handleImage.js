@@ -7,6 +7,7 @@ import { addToUserQueue } from "../utils/userQueueManager.js";
 import { analyzeSlipImage, streamToBuffer } from "../utils/qrSlipworker.js";
 import { handleRegularSlip } from "./Image/handleRegularSlip.js";
 import { getLineProfile } from "../utils/getLineProfile.js";
+import { recordCustomer } from "../utils/customerStore.js";
 import { reportResultToAPI } from "../utils/slipResultManager.js";
 import { setUserSentNormalImage, setUserSentSlip, setBotSentReplyWait, hasBotSentReplyWait, setUserSentRewardImage, setUserSentLossAmountImage,
         hasBotSentReplyWaitSlip, setBotSentReplyWaitSlip, setUserSentImage, clearUserMessageHistory, clearUserTimeout } from "./handleEvent.js";
@@ -101,6 +102,7 @@ export async function handleImageEvent(event, client, prefix, linename, accessTo
           const profile = await getLineProfile(userId, accessToken);
           const phoneNumber = profile?.phoneNumber || "-";
           const lineName = profile?.displayName || "-";
+          recordCustomer({ userId, prefix, linename, displayName: profile?.displayName }); // เก็บชื่อโปรไฟล์ลูกค้า
 
 
           if (!qrData) {

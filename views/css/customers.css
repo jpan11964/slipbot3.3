@@ -1,0 +1,151 @@
+/* customers.css — หน้าจัดการข้อมูลลูกค้า */
+
+.customers-page {
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  left: var(--sidebar-width);
+  padding: 28px 32px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.customers-subtitle {
+  margin: -8px 0 16px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+/* แถบค้นหา */
+.customers-toolbar {
+  margin-bottom: 14px;
+}
+
+.customers-search {
+  position: relative;
+  max-width: 380px;
+}
+
+.customers-search > i {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.customers-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px 10px 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--white);
+  outline: none;
+}
+
+.customers-search input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+.customers-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--white);
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm, var(--shadow));
+  overflow: hidden;
+}
+
+/* หัวตารางแยกจาก body → scrollbar เริ่มใต้หัว (เผื่อ gutter ให้คอลัมน์ตรง)
+   พื้นหลังเข้มเพื่อให้แถบ gutter ที่เผื่อไว้กลมกลืนกับหัวตาราง (ไม่เป็นรอยขาว) */
+.customers-head {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  background: #0c1628;
+}
+
+.customers-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.customers-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.customers-scroll::-webkit-scrollbar-track { background: transparent; }
+.customers-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+
+.customers-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.customers-table th,
+.customers-table td {
+  width: 25%;
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customers-table thead th {
+  background: #0c1628;
+  color: #8fa3bc;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  padding: 13px 16px;
+}
+
+.customers-table tbody td {
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text);
+}
+
+#customers-body tr { height: 50px; transition: background 0.1s; }
+#customers-body tr:hover td { background: #f8fafc; }
+
+/* ช่องเบอร์โทร */
+.cust-phone-span {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+.cust-phone-span:hover {
+  border-bottom-color: var(--blue);
+  color: var(--blue-dark);
+}
+
+.cust-phone-input {
+  width: 130px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1.5px solid var(--blue);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+}
+
+.cust-phone-input::placeholder { color: #94a3b8; }

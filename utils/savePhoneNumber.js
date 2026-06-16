@@ -3,6 +3,7 @@ import Phone from '../models/Phone.js';
 import SlipResult from '../models/SlipResult.js';
 import { broadcastLog } from "../index.js";
 import { broadcastPhoneUpdate } from "../index.js";
+import { updateCustomerPhone } from "./customerStore.js";
 
 // ดึงรายชื่อลูกค้าทั้งหมด (ของทุก prefix)
 export async function getCustomerList() {
@@ -51,8 +52,11 @@ export async function checkAndSavePhoneNumber(text, userId, prefix, linename) {
 
   const phoneNumber = phoneMatch[0];
   const suffix = phoneNumber.slice(-7);           // 7 ตัวท้าย
-  const user = `${prefix}${suffix}`;  
+  const user = `${prefix}${suffix}`;
   const lineName = `${prefix}${suffix}`;            // ประกอบเป็น user
+
+  // อัปเดตเบอร์ใน collection ลูกค้า (customers) เสมอ แม้ Phone จะมีอยู่แล้ว
+  await updateCustomerPhone(userId, phoneNumber, prefix);
 
   try {
     const existing = await Phone.findOne({ userId });

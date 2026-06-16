@@ -19,6 +19,8 @@ import sharp from "sharp";
 import UploadedImage from "./models/lineSendingImage.js";
 import SlipResult from "./models/SlipResult.js";
 import Phone from './models/Phone.js';
+import Customer from './models/Customer.js';
+import { updateCustomerPhone } from './utils/customerStore.js';
 import PrefixForshop from "./models/Prefix.js";
 import moment from "moment-timezone";
 import { connectDB } from "./mongo.js";
@@ -548,6 +550,74 @@ app.post("/api/my-shop-filter", isAuthenticated, async (req, res) => {
   }
 });
 
+// ===== จัดการข้อมูลลูกค้า (Phone) =====
+// รายชื่อลูกค้าทั้งหมด — กรองตามร้านที่ผู้ใช้เลือกแสดง (displayedShops)
+app.get("/api/customers", isAuthenticated, async (req, res) => {
+  try {
+    const { username, role } = req.session.user;
+    const skip = Math.max(0, parseInt(req.query.skip) || 0);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
+    const q = String(req.query.q || "").trim();
+
+    const displayed = await getUserDisplayedShops(role, username); // array | null (null = ทุกร้าน)
+    const filter = Array.isArray(displayed) ? { prefix: { $in: displayed } } : {};
+
+    // ค้นหาตาม displayName / user / เบอร์โทร / linename
+    if (q) {
+      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // กัน regex injection
+      const rx = new RegExp(safe, "i");
+      filter.$or = [{ displayName: rx }, { user: rx }, { phoneNumber: rx }, { linename: rx }];
+    }
+
+    const docs = await Customer.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+    const customers = docs.map(d => ({
+      userId: d.userId,
+      prefix: d.prefix || "",
+      displayName: d.displayName || "-",
+      user: d.user || "-",
+      phoneNumber: (d.phoneNumber && d.phoneNumber !== "-") ? d.phoneNumber : "",
+      linename: d.linename || "-",
+    }));
+    res.json(customers);
+  } catch (err) {
+    console.error("❌ โหลดรายชื่อลูกค้าล้มเหลว:", err.message);
+    res.status(500).json({ message: "โหลดข้อมูลไม่สำเร็จ" });
+  }
+});
+
+// เพิ่ม/แก้ไขเบอร์โทรของลูกค้า → อัปเดต user เป็น {prefix}+เลขท้าย 7 ตัว + ซิงค์ slip results
+app.post("/api/customer-phone", isAuthenticated, async (req, res) => {
+  const { userId, phoneNumber } = req.body || {};
+  if (!userId || !/^\d{9,10}$/.test(phoneNumber || "")) {
+    return res.status(400).json({ success: false, message: "เบอร์โทรไม่ถูกต้อง" });
+  }
+  try {
+    const cust = await Customer.findOne({ userId });
+    if (!cust) return res.status(404).json({ success: false, message: "ไม่พบลูกค้านี้" });
+
+    const prefix = cust.prefix || "";
+    const user = `${prefix}${phoneNumber.slice(-7)}`;
+
+    // อัปเดต Customer (แหล่งหลักของหน้าลูกค้า)
+    await updateCustomerPhone(userId, phoneNumber, prefix);
+
+    // ซิงค์ Phone ด้วย เพื่อให้ตรรกะบอท (getLineProfile) รู้จักเบอร์/user นี้
+    await Phone.updateOne(
+      { userId },
+      { $set: { phoneNumber, user, prefix, linename: cust.linename || "" } },
+      { upsert: true }
+    );
+
+    await checkAndUpdatePhoneNumber(phoneNumber, userId, prefix); // อัปเดต lineName/phone ใน slip results
+    broadcastPhoneUpdate(userId, phoneNumber, user);              // แจ้ง dashboard แบบเรียลไทม์
+
+    res.json({ success: true, user, phoneNumber });
+  } catch (err) {
+    console.error("❌ บันทึกเบอร์ลูกค้าล้มเหลว:", err.message);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+});
+
 // สำหรับโหลดเนื้อหาย่อย เช่น main.html ฯลฯ
 app.get("/page/:name", isAuthenticated, async (req, res) => {
   const name = req.params.name;
@@ -561,7 +631,7 @@ app.get("/page/:name", isAuthenticated, async (req, res) => {
     return res.sendFile(path.join(__dirname, "views", `${name}.html`));
   }
 
-  const allowed = ["main", "dashboard", "settings", "logs", "send-message"];
+  const allowed = ["main", "dashboard", "customers", "settings", "logs", "send-message"];
   if (!allowed.includes(name)) {
     return res.status(404).send("ไม่พบหน้านี้");
   }

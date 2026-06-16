@@ -1,0 +1,36 @@
+<div class="customers-page">
+  <h1 class="page-title">จัดการข้อมูลลูกค้า</h1>
+  <p class="customers-subtitle">รายชื่อลูกค้าตามร้านที่เลือกแสดงในหน้าหลัก — ดับเบิลคลิกที่เบอร์เพื่อแก้ไข</p>
+
+  <div class="customers-toolbar">
+    <div class="customers-search">
+      <i class="bi bi-search"></i>
+      <input type="text" id="customers-search" placeholder="ค้นหา ชื่อไลน์ / user / เบอร์โทร / ร้าน" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="customers-card">
+    <div class="customers-head" id="customers-head">
+      <table class="customers-table">
+        <thead>
+          <tr>
+            <th>ชื่อไลน์</th>
+            <th>user</th>
+            <th>เบอร์โทร</th>
+            <th>จากร้าน</th>
+          </tr>
+        </thead>
+      </table>
+    </div>
+    <div class="customers-scroll" id="customers-scroll">
+      <table class="customers-table">
+        <tbody id="customers-body">
+          <tr id="cust-loading">
+            <td colspan="4" style="text-align:center;font-weight:bold;color:#555;padding:20px;">กำลังโหลด...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script src="/views/js/customers.js"></script>

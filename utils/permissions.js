@@ -3,7 +3,7 @@
 import Credentials from "../models/Temp.js";
 
 // เมนู sidebar ทั้งหมด (ต้องตรงกับ /page/:name และ data-page ใน index.html)
-export const ALL_PAGES = ["main", "dashboard", "logs", "settings", "send-message"];
+export const ALL_PAGES = ["main", "dashboard", "customers", "logs", "settings", "send-message"];
 
 // ปุ่มในหน้าหลัก (การ์ดร้าน + เพิ่มร้าน)
 export const ALL_SHOP_BUTTONS = ["toggle", "line", "bank", "setbot", "edit", "delete", "addshop"];
@@ -23,6 +23,7 @@ export const ADMIN_PAGE_LABELS = {
 export const PAGE_LABELS = {
   main: "หน้าหลัก",
   dashboard: "การทำงานบอท",
+  customers: "จัดการข้อมูลลูกค้า",
   logs: "Logs",
   settings: "ตั้งค่าการตรวจสลิป",
   "send-message": "ส่งข้อความ LINE",
