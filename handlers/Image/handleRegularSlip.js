@@ -145,10 +145,17 @@ export async function handleRegularSlip(
             if (Amount < process.env.MINIMUM_AMOUNT) {
               console.log(`🟡 พบสลิปยอดเงินต่ำกว่ากำหนด จำนวน ${Amount} บาท`);
               broadcastLog(`🟡 พบสลิปยอดเงินต่ำกว่ากำหนด จำนวน ${Amount} บาท`);
-              await sendMessageMinimum(replyToken,client,formattedTransactionDateTime,
-                tranRef,data.amount,data.sender?.account?.name || "ไม่ระบุ",
-                fromBank ,data.sender?.account?.bank?.account || "ไม่ระบุ",
+              await sendMessageMinimum(
+                replyToken,
+                client,
+                formattedTransactionDateTime,
+                tranRef,
+                data.amount,
+                data.sender?.account?.name || "ไม่ระบุ",
+                fromBank,
+                data.sender?.account?.bank?.account || "ไม่ระบุ",
                 data.receiver?.account?.name || "ไม่ระบุ",
+                toBank,
                 data.receiver?.account?.bank?.account || "ไม่ระบุ"
               );
               await reportResultToAPI( baseURL, {

@@ -13,6 +13,18 @@ import { broadcastLog } from "../index.js";
  * @param {string} toBank - ชื่อธนาคารปลายทาง
  */
 export async function sendMessageMinimum(replyToken, client, formattedTransactionDateTime, transRef, amount, fromName, fromBank, fromAccount, toName, toBank ,toAccount) {
+    // LINE Flex ไม่ยอมรับ text ว่าง/undefined → ใส่ fallback ทุก field กัน 400
+    const safe = (v) => (v === undefined || v === null || v === "" ? "-" : String(v));
+    formattedTransactionDateTime = safe(formattedTransactionDateTime);
+    transRef = safe(transRef);
+    amount = safe(amount);
+    fromName = safe(fromName);
+    fromBank = safe(fromBank);
+    fromAccount = safe(fromAccount);
+    toName = safe(toName);
+    toBank = safe(toBank);
+    toAccount = safe(toAccount);
+
     const flexMessage = {
         "type": "bubble",
         "hero": {
@@ -61,7 +73,7 @@ export async function sendMessageMinimum(replyToken, client, formattedTransactio
                 },
                 {
                   "type": "text",
-                  "text": "ย้อนหลังเกินกำหนด ⚠",
+                  "text": "ยอดเงินต่ำกว่ากำหนด ⚠",
                   "size": "25px",
                   "color": "#edc904",
                   "align": "center",
