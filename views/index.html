@@ -66,6 +66,10 @@
       <div class="user-card">
         <i class="bi bi-person-circle user-avatar"></i>
         <span class="user-name" id="footerUsername">-</span>
+        <button class="user-menu-btn noti-btn" onclick="toggleNotiPanel(event)" title="การแจ้งเตือน">
+          <i class="bi bi-bell"></i>
+          <span class="noti-badge" id="notiBadge" hidden>0</span>
+        </button>
         <button class="user-menu-btn" onclick="toggleUserMenu(event)" title="ตัวเลือก">
           <i class="bi bi-three-dots"></i>
         </button>
@@ -80,6 +84,20 @@
       </div>
     </div>
   </aside>
+
+  <!-- หน้าต่างการแจ้งเตือน (ยังไม่ต่อข้อมูล — รอเชื่อม LINE token / MongoDB ภายหลัง) -->
+  <div class="noti-panel" id="notiPanel" hidden>
+    <div class="noti-head">
+      <h3><i class="bi bi-bell"></i> การแจ้งเตือน</h3>
+      <button class="noti-close" onclick="closeNotiPanel()" title="ปิด">&times;</button>
+    </div>
+    <div class="noti-body" id="notiList">
+      <div class="noti-empty">
+        <i class="bi bi-bell-slash"></i>
+        <p>ยังไม่มีการแจ้งเตือน</p>
+      </div>
+    </div>
+  </div>
 
   <div class="content" id="main-content"></div>
 
@@ -246,11 +264,170 @@
       e.stopPropagation()
       const menu = document.getElementById("userMenu")
       menu.hidden = !menu.hidden
+      closeNotiPanel()
     }
     document.addEventListener("click", (e) => {
       const menu = document.getElementById("userMenu")
       const card = e.target.closest(".user-card")
       if (menu && !card) menu.hidden = true
+
+      // ปิดหน้าต่างแจ้งเตือนเมื่อคลิกนอกหน้าต่างและนอกปุ่มกระดิ่ง
+      const panel = document.getElementById("notiPanel")
+      if (panel && !panel.hidden && !e.target.closest("#notiPanel") && !e.target.closest(".noti-btn")) {
+        panel.hidden = true
+      }
+    })
+
+    // ===== การแจ้งเตือน =====
+    function toggleNotiPanel(e) {
+      e.stopPropagation()
+      const panel = document.getElementById("notiPanel")
+      if (!panel) return
+      panel.hidden = !panel.hidden
+      document.getElementById("userMenu").hidden = true
+
+      if (!panel.hidden) {
+        loadNotifications().then(() => {
+          // เปิดดูแล้ว = อ่านแล้ว → เคลียร์ badge
+          fetch("/api/notifications/read", { method: "POST" })
+            .then(() => setNotiCount(0))
+            .catch(() => {})
+        })
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+      ))
+    }
+
+    function formatNotiTime(iso) {
+      const t = new Date(iso).getTime()
+      if (!t) return ""
+      const diff = Math.floor((Date.now() - t) / 1000)
+      if (diff < 60) return "เมื่อสักครู่"
+      if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`
+      if (diff < 86400) return `${Math.floor(diff / 3600)} ชั่วโมงที่แล้ว`
+      return `${Math.floor(diff / 86400)} วันที่แล้ว`
+    }
+
+    // เวลาที่เกิดแต่ละครั้ง — วันนี้บอกแค่เวลา, ข้ามวันแล้วบอกวันที่ด้วย
+    function formatOccurrence(iso) {
+      const d = new Date(iso)
+      if (isNaN(d)) return ""
+      const time = d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false })
+      if (d.toDateString() === new Date().toDateString()) return `${time} น.`
+      const date = d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+      return `${date} ${time} น.`
+    }
+
+    const notiExpanded = new Set()   // key ของรายการที่กางดูเวลาอยู่
+    let notiItems = []
+
+    function renderNotifications(items) {
+      const list = document.getElementById("notiList")
+      if (!list) return
+      notiItems = items
+
+      if (!items.length) {
+        list.innerHTML = '<div class="noti-empty"><i class="bi bi-bell-slash"></i><p>ยังไม่มีการแจ้งเตือน</p></div>'
+        return
+      }
+
+      const iconOf = (lv) => lv === "error" ? "bi-exclamation-octagon-fill"
+                           : lv === "warn" ? "bi-exclamation-triangle-fill"
+                           : "bi-info-circle-fill"
+
+      list.innerHTML = items.map((n) => {
+        const repeated = n.count > 1
+        const open = notiExpanded.has(n.key)
+        const countBtn = repeated
+          ? ` · <button type="button" class="noti-count-btn" data-noti-key="${escapeHtml(n.key)}">
+                เกิดซ้ำ ${n.count} ครั้ง <i class="bi bi-chevron-${open ? "up" : "down"}"></i>
+              </button>`
+          : ""
+        const times = (repeated && open)
+          ? `<div class="noti-times">${(n.times || []).map((t) => `<div>${escapeHtml(formatOccurrence(t))}</div>`).join("")}</div>`
+          : ""
+
+        return `
+          <div class="noti-item ${escapeHtml(n.level)}">
+            <i class="bi ${iconOf(n.level)}"></i>
+            <div class="noti-item-text">
+              <strong>${escapeHtml(n.title)}</strong>
+              <div>${escapeHtml(n.message)}</div>
+              <span class="noti-item-time">${formatNotiTime(n.createdAt)}${countBtn}</span>
+              ${times}
+            </div>
+          </div>`
+      }).join("")
+    }
+
+    // กดที่ "เกิดซ้ำ N ครั้ง" เพื่อกาง/พับรายการเวลา
+    document.getElementById("notiList")?.addEventListener("click", (e) => {
+      const btn = e.target.closest(".noti-count-btn")
+      if (!btn) return
+      // ต้องหยุด bubble ก่อน re-render — เพราะ renderNotifications() เขียนทับ innerHTML
+      // ทำให้ปุ่มหลุดจาก DOM แล้ว handler ระดับ document จะมองว่า "คลิกนอกหน้าต่าง" และปิด panel
+      e.stopPropagation()
+      const key = btn.dataset.notiKey
+      if (notiExpanded.has(key)) notiExpanded.delete(key)
+      else notiExpanded.add(key)
+      renderNotifications(notiItems)
+    })
+
+    function applyNotiData(data) {
+      renderNotifications(data.notifications || [])
+      // เปิดหน้าต่างอยู่ = อ่านแล้ว ไม่ต้องขึ้นตัวเลข
+      if (document.getElementById("notiPanel").hidden) setNotiCount(data.unread || 0)
+      else setNotiCount(0)
+    }
+
+    async function loadNotifications() {
+      try {
+        const res = await fetch("/api/notifications")
+        const data = await res.json()
+        applyNotiData(data)
+      } catch (err) {
+        console.error("โหลดการแจ้งเตือนไม่สำเร็จ:", err)
+      }
+    }
+
+    // realtime — ตัวเลขขึ้นทันทีที่มีแจ้งเตือนใหม่ ไม่ต้องรีเฟรช
+    function startNotiStream() {
+      try {
+        const es = new EventSource("/api/notifications/stream")
+        es.onmessage = (ev) => {
+          try { applyNotiData(JSON.parse(ev.data)) } catch { /* ข้อมูลเพี้ยน ข้ามไป */ }
+        }
+        es.onerror = () => { /* EventSource ต่อใหม่เองอัตโนมัติ */ }
+      } catch (err) {
+        console.error("เชื่อมต่อ stream การแจ้งเตือนไม่สำเร็จ:", err)
+      }
+    }
+
+    // การเริ่มโหลด/ตั้ง interval อยู่ในส่วนเช็คสิทธิ์ด้านล่าง (เฉพาะคนที่มีสิทธิ์)
+
+    function closeNotiPanel() {
+      const panel = document.getElementById("notiPanel")
+      if (panel) panel.hidden = true
+    }
+
+    // ตั้งจำนวนที่ยังไม่อ่านบนกระดิ่ง — ไว้เรียกตอนต่อข้อมูลจริง
+    function setNotiCount(count) {
+      const badge = document.getElementById("notiBadge")
+      const btn = document.querySelector(".noti-btn")
+      if (!badge || !btn) return
+      const n = Number(count) || 0
+      badge.textContent = n > 99 ? "99+" : String(n)
+      badge.hidden = n === 0
+      btn.classList.toggle("has-unread", n > 0)
+    }
+
+    // ปิดด้วยปุ่ม Esc
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeNotiPanel()
     })
 
     // ===== Modal เปลี่ยนรหัสผ่าน =====
@@ -312,6 +489,17 @@
 
       const isOwner = me.role === "OWNER"
       const allowedSidebar = me.permissions?.sidebar || []
+
+      // ปุ่มแจ้งเตือน — OWNER เห็นเสมอ, คนอื่นต้องได้รับสิทธิ์ "notifications"
+      const canSeeNoti = isOwner || allowedSidebar.includes("notifications")
+      const notiBtn = document.querySelector(".noti-btn")
+      if (notiBtn) notiBtn.hidden = !canSeeNoti
+      if (canSeeNoti) {
+        loadNotifications()   // ข้อมูลตั้งต้น
+        startNotiStream()     // จากนั้นรับ realtime ผ่าน SSE
+      } else {
+        closeNotiPanel()
+      }
 
       const managerPages = ["permissions", "prefixes"]
       const adminPages = me.permissions?.adminPages || []

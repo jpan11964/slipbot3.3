@@ -7,6 +7,8 @@ const LineSchema = new mongoose.Schema({
     access_token: String,
     secret_token: String,
     main: Boolean,
+    tokenError: Boolean,   // true = ขอ access token ไม่สำเร็จ (ไลน์หลุด/ถูกระงับ)
+    tokenErrorAt: Date,    // เวลาที่เจอปัญหาล่าสุด
 }, { _id: false });
 
 const ShopSchema = new mongoose.Schema({

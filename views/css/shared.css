@@ -260,6 +260,183 @@ body {
 
 .user-menu-item.logout:hover { background: rgba(239, 68, 68, 0.08); }
 
+/* ===== ปุ่มการแจ้งเตือน ===== */
+.noti-btn {
+  position: relative;
+}
+
+.noti-btn.has-unread {
+  color: var(--amber);
+}
+
+/* ตัวเลขจำนวนที่ยังไม่อ่าน */
+.noti-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  background: var(--red);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.noti-badge[hidden] { display: none; }
+
+/* ===== หน้าต่างการแจ้งเตือน ===== */
+.noti-panel {
+  position: fixed;
+  left: 16px;
+  bottom: 76px;
+  width: 340px;
+  max-height: 60vh;
+  background: var(--white);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.noti-panel[hidden] { display: none; }
+
+.noti-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.noti-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.noti-head h3 i {
+  font-size: 15px;
+  color: var(--blue);
+}
+
+.noti-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+
+.noti-close:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.noti-body {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+/* สถานะว่าง */
+.noti-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--text-muted);
+}
+
+.noti-empty i { font-size: 30px; }
+
+.noti-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* รายการแจ้งเตือน (ไว้ใช้ตอนต่อข้อมูล) */
+.noti-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.noti-item:hover { background: var(--bg); }
+
+.noti-item i { font-size: 16px; flex-shrink: 0; }
+
+.noti-item.error i { color: var(--red); }
+
+.noti-item.warn i { color: var(--amber); }
+
+.noti-item.info i { color: var(--blue); }
+
+.noti-item-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.noti-item-time {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ปุ่ม "เกิดซ้ำ N ครั้ง" — กดเพื่อกางดูเวลาที่เกิดแต่ละครั้ง */
+.noti-count-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.noti-count-btn:hover { color: var(--blue-dark); }
+
+.noti-count-btn i { font-size: 9px; text-decoration: none; }
+
+/* รายการเวลาที่เกิดซ้ำ */
+.noti-times {
+  margin-top: 6px;
+  padding: 6px 9px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.noti-times div { padding: 2px 0; }
+
 /* ===== MAIN CONTENT ===== */
 .content {
   flex: 1;

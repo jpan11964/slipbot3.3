@@ -35,6 +35,36 @@ app.post("/api/{name}", async (req, res) => {
 });
 ```
 
+## Auth / สิทธิ์
+
+route ที่ผู้ใช้เรียกจากหน้าเว็บ ควรใส่ `isAuthenticated` เสมอ
+ถ้าต้องจำกัดเฉพาะบางสิทธิ์ ให้เช็คด้วย `getUserPermissions`:
+
+```js
+app.get("/api/{name}", isAuthenticated, async (req, res) => {
+  const { username, role } = req.session.user;
+  if (role !== "OWNER") {
+    const perms = await getUserPermissions(role, username);
+    if (!(perms.sidebar || []).includes("{permKey}")) {
+      return res.status(403).json({ success: false, message: "ไม่มีสิทธิ์" });
+    }
+  }
+  // ...
+});
+```
+
+สิทธิ์ทั้งหมดนิยามใน `utils/permissions.js` — เพิ่ม key ใหม่ต้องใส่ทั้ง `ALL_PAGES` และ `PAGE_LABELS`
+
+## ข้อควรระวังเรื่อง query
+
+**ห้าม `Shop.find()` โดยไม่ใส่ projection** — `bonusImage`/`passwordImage` รวม ~5 MB
+ทำให้ query ใช้เวลา ~40 วินาที จนเกิด `MongoNetworkTimeoutError`
+
+```js
+await Shop.find({}, { bonusImage: 0, passwordImage: 0 });  // รายชื่อร้าน
+await Shop.findOne({ prefix });                             // ร้านเดียว (~50 ms)
+```
+
 ## ขั้นตอน
 
 1. ดู Route Map ใน `index.js` (~line 72) เพื่อหาตำแหน่งที่เหมาะสม

@@ -51,9 +51,10 @@ OPENAI_API_KEY=       # GPT-4o-mini fallback
 - Exports: `broadcastLog()`, `broadcastPhoneUpdate()`, `getBankAccounts()`, `loadBankAccounts()`
 
 ### MongoDB Connection — `mongo.js`
-- ใช้ `dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])` ก่อน connect — **ห้ามลบ**
-- แก้ปัญหา Node.js c-ares ไม่สามารถ resolve SRV record ของ MongoDB Atlas บน Windows ได้
-- Auto-reconnect เมื่อ disconnected
+- ใช้ `dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])` ก่อน connect — **เฉพาะ Windows เท่านั้น**
+  (ครอบด้วย `if (process.platform === "win32")`) แก้ปัญหา c-ares resolve SRV ของ Atlas ไม่ได้บน Windows
+- **ห้ามเปิดใช้บน production (Linux/Render)** — บังคับ DNS ภายนอกโดยไม่จำเป็น เสี่ยง resolve node ของ Atlas เพี้ยน
+- Auto-reconnect เมื่อ disconnected + ยิงการแจ้งเตือนระบบเมื่อ connect fail / disconnected / error
 
 ### Event Flow
 ```
@@ -93,13 +94,17 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 | `Temp.js` | Credentials (OWNER, ADMIN, MARKETING users) |
 | `QrEntry.js` | QR code dedup tracking |
 | `lineSendingImage.js` | Temp image storage for admin send-message feature |
+| `Customer.js` | ลูกค้าทุกคนที่ทักเข้ามา (userId, prefix, linename, displayName, phone) |
+| `Notification.js` | การแจ้งเตือนระบบ (TTL 30 วัน) — ใช้ผ่าน `utils/notificationStore.js` |
 
 ### Shop Schema Key Fields
 ```js
 {
   prefix: String,        // e.g. "ABC" — used as shop identifier
   lines: [{              // LINE OA accounts
-    linename, channel_id, access_token, secret_token
+    linename, channel_id, access_token, secret_token,
+    tokenError,          // true = ขอ access token ไม่สำเร็จ (แสดงเครื่องหมายแดงหน้าชื่อไลน์)
+    tokenErrorAt,
   }],
   status: Boolean,       // shop on/off
   statusBot: Boolean,    // text bot on/off
@@ -155,6 +160,14 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 ### Settings
 - `GET/POST /api/settings` — global settings via `settingsManager.js`
 
+### Notifications
+- `GET /api/notifications` — รายการแจ้งเตือน + จำนวนที่ยังไม่อ่าน
+- `POST /api/notifications/read` — ทำเครื่องหมายอ่านทั้งหมด
+- `POST /api/notifications/clear` — ล้างทั้งหมด
+- `POST /api/notifications/test` — สร้างแจ้งเตือนปลอมไว้ทดสอบ UI
+
+> ทุก endpoint ต้องผ่าน `isAuthenticated` + สิทธิ์ sidebar `"notifications"` (OWNER ผ่านเสมอ)
+
 ### LINE Helpers
 - `POST /api/get-access-token` — exchange channelId+secret for access token
 - `POST /api/set-webhook` — set LINE webhook URL
@@ -209,6 +222,10 @@ JSON arrays of response strings per category. One is picked and sent to user.
 - `qrSlipworker.js` — QR slip verification workflow (ใช้ใน text context)
 - `savePhoneNumber.js` — save/update LINE userId ↔ phone mapping
 - `getLineProfile.js` — fetch LINE user display name
+- `lineToken.js` — ออก/ต่ออายุ LINE access token + healing client (จับ 401 แล้ว retry เอง)
+- `notificationStore.js` — การแจ้งเตือนระบบ (memory-first + persist ลง DB)
+- `customerStore.js` — บันทึก/อัปเดตลูกค้าใน collection `customers`
+- `permissions.js` — นิยามสิทธิ์ทั้งหมด + `getUserPermissions(role, username)`
 
 ---
 
@@ -261,3 +278,16 @@ Multi-page SPA loaded via `/page/:name` (authenticated):
 7. **MongoDB DNS fix**: `mongo.js` ใช้ `dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])` ก่อน connect — แก้ปัญหา `querySrv ECONNREFUSED` ที่เกิดจาก Node.js c-ares บน Windows ไม่สามารถ resolve SRV record ได้ **ห้ามลบบรรทัดนี้**
 
 8. **Dual BonusTime Image**: Each shop stores up to 2 bonus images (`image1`, `image2`) — upload is sequential (image1 first, then image2). Use `/api/upload-change-bonus-image` to replace a specific slot.
+
+9. **ห้าม `Shop.find()` โดยไม่ใส่ projection** — `bonusImage` + `passwordImage` ฝังในเอกสารร้าน รวม ~5 MB
+   ทำให้ query ใช้เวลา **~40 วินาที** จนเกิด `MongoNetworkTimeoutError` ตอน startup
+   ใช้ `Shop.find({}, { bonusImage: 0, passwordImage: 0 })` หรือ `Shop.findOne({ prefix })` (~50 ms)
+
+10. **LINE token หมดอายุได้** — ระบบออก token ผ่าน `/v2/oauth/accessToken` (client_credentials)
+    ซึ่ง**ไม่ใช่** long-lived token จากหน้า console → ต้องต่ออายุ
+    - `startTokenRefreshScheduler()` ต่ออายุอัตโนมัติ **ทุก 4 วัน** (เก็บเวลาใน `settings` key `token-refresh-meta`)
+    - `createHealingClient()` จับ 401 → ออก token ใหม่ → retry ใน event เดิม (ลูกค้ายังได้รับการตอบกลับ)
+    - ถ้าออก token ไม่ได้ → ตั้ง `lines[].tokenError = true` + ยิงการแจ้งเตือน
+
+11. **การแจ้งเตือนเก็บใน memory เป็นหลัก** — เพราะต้องแจ้ง "MongoDB ล่ม" ได้ตอน MongoDB ล่ม
+    persist ลง DB แบบ best-effort และ `loadNotificationsFromDB()` กู้กลับตอน start

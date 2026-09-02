@@ -765,6 +765,61 @@
   box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
 }
 
+/* เครื่องหมายเตือนหน้าชื่อไลน์ที่หลุดการเชื่อมต่อ */
+.main-page .line-token-error {
+  position: relative;
+  display: inline-block;
+  color: var(--red);
+  font-size: 15px;
+  cursor: default;
+  vertical-align: -1px;
+}
+
+/* ข้อความลอย — ทำเองเพราะ tooltip ของเบราว์เซอร์ปรับขนาดตัวอักษรไม่ได้ */
+.main-page .line-token-error::after {
+  content: attr(data-tip);
+  position: absolute;
+  /* ยึดขอบซ้ายของไอคอน ไม่จัดกึ่งกลาง — กันข้อความล้นออกนอกจอเมื่อไอคอนอยู่ชิดซ้าย */
+  left: -4px;
+  bottom: calc(100% + 9px);
+  white-space: nowrap;
+  background: var(--navy);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* ลูกศรชี้ลงใต้กล่องข้อความ */
+.main-page .line-token-error::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 3px);
+  border: 6px solid transparent;
+  border-top-color: var(--navy);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.main-page .line-token-error:hover::after,
+.main-page .line-token-error:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ปุ่มบันทึกตอนกำลังเชื่อมต่อ LINE — กันกดซ้ำ */
 .main-page .btn-line-save:disabled,
 .main-page .btn-line-save:disabled:hover {

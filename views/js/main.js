@@ -27,6 +27,24 @@ async function loadShops() {
     }
 }
 
+// สร้าง HTML ของรายการไลน์ 1 บรรทัด — ใช้ร่วมกันทุกที่ที่วาดรายการไลน์
+// (เดิมโค้ดนี้ซ้ำ 3 ที่ ทำให้เครื่องหมาย "ไลน์หลุด" หายไปในบางหน้าจอ)
+// ไลน์ที่ tokenError = true จะมีเครื่องหมายสีแดงนำหน้าเสมอ จนกว่าจะบันทึกสำเร็จหรือถูกลบ
+function renderLineItem(prefix, line, index) {
+    const warnIcon = line.tokenError
+        ? `<span class="line-token-error" data-tip="ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"><i class="bi bi-exclamation-circle-fill"></i></span> `
+        : "";
+    return `
+        <div class="shop-line-item">
+            <span>${warnIcon}${line.linename}</span>
+            <div>
+                <button class="line-btn-edit" onclick="editLine('${prefix}', ${index})">แก้ไข</button>
+                <button class="line-btn-delete" onclick="deleteLine('${prefix}', ${index})">ลบ</button>
+            </div>
+        </div>
+    `;
+}
+
 function openShopLinesModal(prefix) {
     currentShopPrefix = prefix; // ตั้งค่า prefix ให้ถูกต้อง
     const modal = document.getElementById("shopLinesModal");
@@ -48,22 +66,16 @@ function openShopLinesModal(prefix) {
     if (!shop.lines || shop.lines.length === 0) {
         lineListElement.innerHTML = "<p>ไม่มีบัญชี LINE</p>";
     } else {
-        let html = "";
-        shop.lines.forEach((line, index) => {
-            html += `
-                    <div class="shop-line-item">
-                        <span>${line.linename}</span>
-                        <div>
-                            <button class="line-btn-edit" onclick="editLine('${prefix}', ${index})">แก้ไข</button>
-                            <button class="line-btn-delete" onclick="deleteLine('${prefix}', ${index})">ลบ</button>
-                        </div>
-                    </div>
-                `;
-        });
-        lineListElement.innerHTML = html;
+        lineListElement.innerHTML = shop.lines
+            .map((line, index) => renderLineItem(prefix, line, index))
+            .join("");
     }
 
     modal.style.display = "flex";
+
+    // shopData เป็น cache ที่โหลดตอนเปิดหน้า — ดึงสดจาก API ซ้ำ
+    // เพื่อให้สถานะ "ไลน์หลุด" ล่าสุดแสดงถูกต้องเสมอ
+    loadShopLines(prefix);
 }
 
 function closeEditBankModal() {
@@ -108,15 +120,9 @@ function setLineModalLoading(modalId, isLoading, message) {
     if (saveBtn) saveBtn.disabled = isLoading;
 }
 
-// ถามยืนยันถ้ายังเชื่อมต่อไม่เสร็จ — คืน true ถ้าปิดหน้าต่างได้
-function confirmCloseLineModal(modalId) {
-    if (!lineModalBusy[modalId]) return true;
-    return confirm("ยังเชื่อมต่อ LINE ไม่เสร็จ หากปิดตอนนี้ข้อมูลอาจบันทึกไม่สมบูรณ์\n\nต้องการปิดหน้าต่างเลยหรือไม่?");
-}
-
 // ปิด Modal เพิ่มบัญชี LINE
+// ไม่ต้องถามยืนยันตอนกำลังโหลด — overlay บังปุ่ม X อยู่แล้ว ผู้ใช้กดไม่ได้
 function closeAddLineModal() {
-    if (!confirmCloseLineModal("addLineModal")) return;
     setLineModalLoading("addLineModal", false);
     document.getElementById("addLineModal").style.display = "none";
 }
@@ -260,20 +266,9 @@ async function loadShopLines(prefix) {
             return;
         }
 
-        let html = "";
-        shop.lines.forEach((line, index) => {
-            html += `
-                <div class="shop-line-item">
-                    <span>${line.linename}</span>
-                    <div>
-                        <button class="line-btn-edit" onclick="editLine('${prefix}', ${index})">แก้ไข</button>
-                        <button class="line-btn-delete" onclick="deleteLine('${prefix}', ${index})">ลบ</button>
-                    </div>
-                </div>
-            `;
-        });
-
-        lineListElement.innerHTML = html;
+        lineListElement.innerHTML = shop.lines
+            .map((line, index) => renderLineItem(prefix, line, index))
+            .join("");
         console.log("โหลด LINE สดจาก API สำเร็จ:", shop.lines);
     } catch (err) {
         console.error("❌ โหลด LINE จาก API ไม่สำเร็จ:", err);
@@ -330,7 +325,6 @@ function editLine(prefix, index) {
 
 
 function closeEditLineModal() {
-    if (!confirmCloseLineModal("editLineModal")) return;
     setLineModalLoading("editLineModal", false);
     document.getElementById("editLineModal").style.display = "none";
 }
@@ -363,13 +357,19 @@ async function saveEditedLine() {
         const shortChannelID = String(newChannelID).slice(-4); // ใช้ 4 ตัวท้ายเพื่อแสดง Webhook
         const webhookURL = `${baseURL}/webhook/${currentShopPrefix}/${shortChannelID}.bot`;
 
+        // ชื่อไลน์เดิม — ส่งไปให้ backend ใช้ตอนแจ้งเตือนถ้าขอ token ไม่สำเร็จ
+        const editingShop = shopData.find(s => s.prefix === currentEditingPrefix);
+        const editingLinename = editingShop?.lines?.[currentEditingIndex]?.linename || "";
+
         // ขอ Access Token
         const tokenRes = await fetch("/api/get-access-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 channelId: newChannelID,
-                secretToken: newSecretToken
+                secretToken: newSecretToken,
+                prefix: currentEditingPrefix,
+                linename: editingLinename
             })
         });
 
@@ -377,6 +377,8 @@ async function saveEditedLine() {
 
         if (!tokenData.success) {
             showAlertMessage(tokenData.message || "ขอ Access Token ไม่สำเร็จ", "alertMessageEditLine", false);
+            // backend ทำเครื่องหมาย "ไลน์หลุด" ไว้แล้ว → รีเฟรชรายการให้เห็นทันที
+            loadShopLines(currentEditingPrefix);
             return;
         }
 
@@ -466,20 +468,9 @@ function updateShopLinesUI(prefix) {
         return;
     }
 
-    let html = "";
-    shop.lines.forEach((line, index) => {
-        html += `
-            <div class="shop-line-item">
-                <span>${line.linename}</span>
-                <div>
-                    <button class="line-btn-edit" onclick="editLine('${prefix}', ${index})">แก้ไข</button>
-                    <button class="line-btn-delete" onclick="deleteLine('${prefix}', ${index})">ลบ</button>
-                </div>
-            </div>
-        `;
-    });
-
-    lineListElement.innerHTML = html;
+    lineListElement.innerHTML = shop.lines
+        .map((line, index) => renderLineItem(prefix, line, index))
+        .join("");
 }
 
 async function openShopSetBotModal(prefix) {

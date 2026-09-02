@@ -16,6 +16,21 @@
 
 ## ไฟล์ที่เกี่ยวข้อง
 
-- `views/css/shared.css` — CSS variables ทั้งหมด
-- `views/css/main.css` — shop cards, modals, buttons
+- `views/css/shared.css` — CSS variables, sidebar, ปุ่ม/หน้าต่างแจ้งเตือน
+- `views/css/main.css` — shop cards, modals, buttons, เครื่องหมายไลน์หลุด
 - `views/js/main.js` — shop UI functions
+- `views/index.html` — shell (sidebar, สิทธิ์, การแจ้งเตือน) — script อยู่ inline ในไฟล์
+
+## ข้อควรระวังเฉพาะโปรเจกต์นี้
+
+1. **รายการไลน์ในร้าน** — ใช้ `renderLineItem(prefix, line, index)` เสมอ
+   ห้ามเขียน HTML ของ `.shop-line-item` ซ้ำ (เคยซ้ำ 3 ที่ จนเครื่องหมาย "ไลน์หลุด" หายบางหน้าจอ)
+
+2. **tooltip** — `title` ของเบราว์เซอร์ปรับขนาดตัวอักษรไม่ได้
+   ถ้าต้องคุมหน้าตา ให้ทำเองด้วย `::before`/`::after` + `data-tip` (ดู `.line-token-error`)
+
+3. **ปุ่มที่ต้องมีสิทธิ์** — เช็คใน `views/index.html` ส่วนที่อ่าน `me.permissions.sidebar`
+   และต้องกันฝั่ง server ด้วย ไม่ใช่ซ่อนแค่ UI
+
+4. **หน้าต่างที่ยิง API ช้า** — ใส่ overlay กำลังโหลด + ถามยืนยันก่อนปิด
+   (ดู `setLineModalLoading()` / `confirmCloseLineModal()` ใน `main.js`)

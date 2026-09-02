@@ -96,7 +96,41 @@ updatePasswordStatus(prefix, bool, checkbox)
 
 // LINE accounts
 addLine(prefix) / updateLine(prefix, idx) / deleteLine(prefix, idx)
+renderLineItem(prefix, line, index)   // สร้าง HTML 1 แถว — ใช้ร่วมกันทุกที่ที่วาดรายการไลน์
+setLineModalLoading(modalId, isLoading, message)  // overlay กำลังเชื่อมต่อ + disable ปุ่ม
+confirmCloseLineModal(modalId)        // ถามยืนยันถ้าปิดหน้าต่างขณะยังโหลดไม่เสร็จ
 ```
+
+> **สำคัญ:** ห้ามเขียน HTML ของ `.shop-line-item` ซ้ำอีก — ใช้ `renderLineItem()` เสมอ
+> (เคยมีโค้ดนี้ซ้ำ 3 ที่ ทำให้เครื่องหมาย "ไลน์หลุด" หายไปในบางหน้าจอ)
+
+## index.html — ฟังก์ชันของ shell
+
+```js
+toggleNotiPanel(e) / closeNotiPanel()   // หน้าต่างการแจ้งเตือน
+setNotiCount(n)                          // ตัวเลขบนกระดิ่ง (0 = ซ่อน, >99 = "99+")
+loadNotifications()                      // ดึงจาก /api/notifications (poll ทุก 30 วิ)
+renderNotifications(items)               // วาดรายการ
+```
+
+ปุ่มกระดิ่งแสดงเฉพาะ OWNER หรือผู้ที่มีสิทธิ์ sidebar `"notifications"`
+
+## Notification CSS (shared.css)
+
+```
+.noti-btn / .noti-badge          ปุ่มกระดิ่ง + ตัวเลขค้างอ่าน
+.noti-panel / .noti-head / .noti-body   หน้าต่าง (position: fixed, z-index 1001)
+.noti-empty                      สถานะว่าง
+.noti-item.error / .warn / .info รายการ 3 ระดับ (แดง / เหลือง / น้ำเงิน)
+```
+
+## เครื่องหมายไลน์หลุด (main.css)
+
+```
+.line-token-error   ไอคอนแดงหน้าชื่อไลน์ + tooltip ทำเอง (::before/::after)
+```
+ใช้ tooltip เองแทน `title` ของเบราว์เซอร์ เพราะปรับขนาดตัวอักษรไม่ได้
+ยึดขอบซ้ายของไอคอน (ไม่จัดกึ่งกลาง) เพื่อกันข้อความล้นออกนอกจอ
 
 ## Bonus Image HTML IDs (ต้องตรงกันทุกที่)
 

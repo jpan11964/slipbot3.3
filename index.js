@@ -26,7 +26,8 @@ import moment from "moment-timezone";
 import { connectDB } from "./mongo.js";
 import Shop from "./models/Shop.js";
 import { checkAndSavePhoneNumber, checkAndUpdatePhoneNumber } from "./utils/savePhoneNumber.js";
-import { createHealingClient, startTokenRefreshScheduler } from "./utils/lineToken.js";
+import { createHealingClient, startTokenRefreshScheduler, markLineTokenError, clearLineTokenError } from "./utils/lineToken.js";
+import { addNotification, listNotifications, unreadCount, markAllRead, clearNotifications, loadNotificationsFromDB, onNotification } from "./utils/notificationStore.js";
 import multer from "multer";
 
 const upload = multer();
@@ -959,6 +960,109 @@ app.post('/api/save-phone', async (req, res) => {
   }
 });
 
+// ===== การแจ้งเตือนระบบ =====
+// OWNER เห็นเสมอ, คนอื่นต้องได้รับสิทธิ์ sidebar "notifications"
+async function canSeeNotifications(req) {
+  const { username, role } = req.session?.user || {};
+  if (!role) return false;
+  if (role === "OWNER") return true;
+  const perms = await getUserPermissions(role, username);
+  return (perms.sidebar || []).includes("notifications");
+}
+
+app.get("/api/notifications", isAuthenticated, async (req, res) => {
+  if (!(await canSeeNotifications(req))) {
+    return res.status(403).json({ success: false, message: "ไม่มีสิทธิ์ดูการแจ้งเตือน" });
+  }
+  const { username } = req.session.user;
+  res.json({
+    success: true,
+    unread: unreadCount(username),
+    notifications: listNotifications(50, username),
+  });
+});
+
+// SSE — ส่งการแจ้งเตือนใหม่ให้ browser ทันที (ไม่ต้องรีเฟรช)
+// เก็บ username ไว้กับแต่ละ connection เพราะจำนวนค้างอ่านแยกตามผู้ใช้
+const notiClients = []; // [{ res, username }]
+
+function sendNotiTo(client) {
+  try {
+    client.res.write(`data: ${JSON.stringify({
+      unread: unreadCount(client.username),
+      notifications: listNotifications(50, client.username),
+    })}\n\n`);
+  } catch { /* client หลุด */ }
+}
+
+app.get("/api/notifications/stream", isAuthenticated, async (req, res) => {
+  if (!(await canSeeNotifications(req))) return res.status(403).end();
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const client = { res, username: req.session.user.username };
+  sendNotiTo(client); // ส่งสถานะปัจจุบันทันทีที่เชื่อมต่อ
+
+  notiClients.push(client);
+  req.on("close", () => {
+    const i = notiClients.indexOf(client);
+    if (i !== -1) notiClients.splice(i, 1);
+  });
+});
+
+// มีแจ้งเตือนใหม่/เปลี่ยนแปลง → ยิงให้ทุก client โดยคำนวณค้างอ่านของแต่ละคนแยกกัน
+onNotification(() => {
+  notiClients.forEach(sendNotiTo);
+});
+
+app.post("/api/notifications/read", isAuthenticated, async (req, res) => {
+  if (!(await canSeeNotifications(req))) {
+    return res.status(403).json({ success: false, message: "ไม่มีสิทธิ์" });
+  }
+  const { username } = req.session.user;
+  markAllRead(username); // อ่านเฉพาะของคนนี้ ไม่กระทบผู้ใช้คนอื่น
+  res.json({ success: true, unread: unreadCount(username) });
+});
+
+app.post("/api/notifications/clear", isAuthenticated, async (req, res) => {
+  if (!(await canSeeNotifications(req))) {
+    return res.status(403).json({ success: false, message: "ไม่มีสิทธิ์" });
+  }
+  clearNotifications();
+  res.json({ success: true, unread: 0 });
+});
+
+// สร้างการแจ้งเตือนปลอมเพื่อทดสอบ UI
+app.post("/api/notifications/test", isAuthenticated, async (req, res) => {
+  await addNotification({
+    key: `line_token:test-${Date.now()}`,
+    level: "error",
+    category: "line_token",
+    title: "ไลน์หลุดการเชื่อมต่อ",
+    message: 'ร้าน ADN — ไลน์ "ADENGAME Center" ขอ access token ไม่สำเร็จ กรุณาตรวจสอบหรือลบไลน์นี้',
+    prefix: "ADN",
+    linename: "ADENGAME Center",
+  });
+  await addNotification({
+    key: `system:test-mongo-${Date.now()}`,
+    level: "warn",
+    category: "system",
+    title: "ฐานข้อมูลหลุดการเชื่อมต่อ",
+    message: "MongoDB หลุดการเชื่อมต่อ กำลังเชื่อมต่อใหม่อัตโนมัติ",
+  });
+  await addNotification({
+    key: `system:test-info-${Date.now()}`,
+    level: "info",
+    category: "system",
+    title: "ต่ออายุ token สำเร็จ",
+    message: "ต่ออายุ LINE token อัตโนมัติสำเร็จ 15 บัญชี",
+  });
+  res.json({ success: true, unread: unreadCount(req.session.user.username) });
+});
+
 app.get("/api/env", (req, res) => {
   res.json({ URL: process.env.URL });
 });
@@ -1523,7 +1627,9 @@ app.post("/api/delete-shop", async (req, res) => {
 });
 
 app.post("/api/get-access-token", async (req, res) => {
-  const { channelId, secretToken } = req.body;
+  // prefix + linename ส่งมาจากหน้าแก้ไขไลน์ (ไม่บังคับ)
+  // ใช้ทำเครื่องหมาย "ไลน์หลุด" ทันทีถ้าขอ token ไม่สำเร็จ
+  const { channelId, secretToken, prefix, linename } = req.body;
 
   if (!channelId || !secretToken) {
     return res.status(400).json({ success: false, message: "ข้อมูลไม่ครบถ้วน" });
@@ -1543,10 +1649,21 @@ app.post("/api/get-access-token", async (req, res) => {
 
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
+      // ขอไม่ได้ = ไลน์มีปัญหา/ถูกระงับ → ทำเครื่องหมายหน้าชื่อไลน์ทันที + แจ้งเตือน
+      if (prefix) {
+        await markLineTokenError({
+          prefix,
+          channelId,
+          linename,
+          reason: tokenData.error_description || tokenData.error || "",
+        });
+      }
       return res.status(400).json({ success: false, message: "ขอ access_token ไม่สำเร็จ" });
     }
 
     const access_token = tokenData.access_token;
+    // ขอได้แล้ว → ล้างเครื่องหมายไลน์หลุด (ถ้าเคยมี)
+    if (prefix) await clearLineTokenError({ prefix, channelId });
 
     // 2. ดึงชื่อ LINE OA จาก /v2/bot/info
     const infoRes = await fetch("https://api.line.me/v2/bot/info", {
@@ -1913,6 +2030,7 @@ app.listen(PORT, async () => {
     await migrateRoleToUser();
     await loadBankAccounts();
     await setupWebhooks();
+    await loadNotificationsFromDB(); // กู้การแจ้งเตือนเดิมกลับเข้า memory
     startSlip2goMonitor(); // เริ่มมอนิเตอร์โควต้า Slip2Go + แจ้งเตือน Telegram
     startTokenRefreshScheduler(); // auto-refresh LINE token ทุก 4 วัน + catch-up ตอน start
     console.log("All services initialized");

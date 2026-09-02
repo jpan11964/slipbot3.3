@@ -3,7 +3,8 @@
 import Credentials from "../models/Temp.js";
 
 // เมนู sidebar ทั้งหมด (ต้องตรงกับ /page/:name และ data-page ใน index.html)
-export const ALL_PAGES = ["main", "dashboard", "customers", "logs", "settings", "send-message"];
+// "notifications" ไม่ใช่หน้าเพจ แต่เป็นสิทธิ์เห็นปุ่มแจ้งเตือนใน sidebar
+export const ALL_PAGES = ["main", "dashboard", "customers", "logs", "settings", "send-message", "notifications"];
 
 // ปุ่มในหน้าหลัก (การ์ดร้าน + เพิ่มร้าน)
 export const ALL_SHOP_BUTTONS = ["toggle", "line", "bank", "setbot", "edit", "delete", "addshop"];
@@ -27,6 +28,7 @@ export const PAGE_LABELS = {
   logs: "Logs",
   settings: "ตั้งค่าการตรวจสลิป",
   "send-message": "ส่งข้อความ LINE",
+  notifications: "รับการแจ้งเตือนของระบบ",
 };
 
 export const SHOP_BUTTON_LABELS = {

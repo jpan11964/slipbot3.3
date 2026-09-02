@@ -4,6 +4,7 @@
 import line from "@line/bot-sdk";
 import Shop from "../models/Shop.js";
 import Setting from "../models/Setting.js";
+import { addNotification, resolveNotification } from "./notificationStore.js";
 
 const REFRESH_INTERVAL_MS = 4 * 24 * 60 * 60 * 1000; // 4 วัน
 const SETTING_KEY = "token-refresh-meta";
@@ -33,6 +34,45 @@ export async function issueChannelToken(channelId, secret) {
   return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
+// ---- ทำเครื่องหมาย "ไลน์หลุด" + แจ้งเตือน ----
+// เรียกเมื่อขอ access token ไม่สำเร็จ (ไลน์ถูกระงับ / secret เปลี่ยน / channel ถูกลบ)
+export async function markLineTokenError({ prefix, channelId, linename, reason = "" }) {
+  const name = linename || `channel ...${String(channelId).slice(-4)}`;
+  try {
+    await Shop.updateOne(
+      { prefix, "lines.channel_id": String(channelId) },
+      { $set: { "lines.$.tokenError": true, "lines.$.tokenErrorAt": new Date() } }
+    );
+  } catch (err) {
+    console.error("ทำเครื่องหมายไลน์หลุดไม่สำเร็จ:", err.message);
+  }
+
+  await addNotification({
+    key: `line_token:${channelId}`,
+    level: "error",
+    category: "line_token",
+    title: "ไลน์หลุดการเชื่อมต่อ",
+    message: `ร้าน ${prefix} — ไลน์ "${name}" ขอ access token ไม่สำเร็จ กรุณาตรวจสอบหรือลบไลน์นี้${reason ? ` (${reason})` : ""}`,
+    prefix,
+    linename: name,
+    channelId: String(channelId),
+  });
+}
+
+// ---- ล้างเครื่องหมาย เมื่อไลน์กลับมาใช้งานได้ ----
+export async function clearLineTokenError({ prefix, channelId }) {
+  try {
+    const res = await Shop.updateOne(
+      { prefix, "lines.channel_id": String(channelId) },
+      { $set: { "lines.$.tokenError": false }, $unset: { "lines.$.tokenErrorAt": "" } }
+    );
+    // เคลียร์การแจ้งเตือนเดิมทิ้งเมื่อกลับมาปกติ
+    if (res.modifiedCount) resolveNotification(`line_token:${channelId}`);
+  } catch {
+    // ไม่สำคัญพอที่จะทำให้ flow หลักพัง
+  }
+}
+
 // ---- refresh token ของ 1 line (single-flight ต่อ channel — กันยิงขอรัวๆ) ----
 const inflight = new Map(); // channelId -> Promise<newToken|null>
 
@@ -40,10 +80,14 @@ export function refreshShopLineToken({ prefix, channelId, secret, staleToken }) 
   const key = String(channelId);
   if (inflight.has(key)) return inflight.get(key);
 
+  let lineNameForLog = "";
+
   const p = (async () => {
     // เผื่อมี event อื่น refresh ไปแล้ว → ใช้ตัวใน DB เลย ไม่ต้องออกใหม่
     const shop = await Shop.findOne({ prefix }).lean();
     const dbLine = shop?.lines?.find((l) => String(l.channel_id) === key);
+    lineNameForLog = dbLine?.linename || "";
+
     if (dbLine?.access_token && dbLine.access_token !== staleToken) {
       return dbLine.access_token;
     }
@@ -57,10 +101,13 @@ export function refreshShopLineToken({ prefix, channelId, secret, staleToken }) 
       { prefix, "lines.channel_id": String(channelId) },
       { $set: { "lines.$.access_token": access_token } }
     );
-    console.log(`🔄 ออก token ใหม่ (401 fallback) ร้าน ${prefix} channel ...${key.slice(-4)}`);
+    await clearLineTokenError({ prefix, channelId }); // กลับมาใช้ได้แล้ว
+    console.log(`ออก token ใหม่ (401 fallback) ร้าน ${prefix} channel ...${key.slice(-4)}`);
     return access_token;
-  })().catch((err) => {
-    console.error(`❌ refresh token ล้มเหลว ร้าน ${prefix} channel ...${key.slice(-4)}:`, err.message);
+  })().catch(async (err) => {
+    console.error(`refresh token ล้มเหลว ร้าน ${prefix} channel ...${key.slice(-4)}:`, err.message);
+    // กู้ไม่ได้ = ไลน์หลุดจริง → ทำเครื่องหมาย + แจ้งเตือน
+    await markLineTokenError({ prefix, channelId, linename: lineNameForLog, reason: err.message });
     return null;
   }).finally(() => inflight.delete(key));
 
@@ -112,15 +159,23 @@ export async function refreshAllShopTokens() {
           { prefix: shop.prefix, "lines.channel_id": String(l.channel_id) },
           { $set: { "lines.$.access_token": access_token } }
         );
+        await clearLineTokenError({ prefix: shop.prefix, channelId: l.channel_id });
         ok++;
       } catch (err) {
         fail++;
-        console.error(`❌ refresh token ร้าน ${shop.prefix} channel ...${String(l.channel_id).slice(-4)}:`, err.message);
+        console.error(`refresh token ร้าน ${shop.prefix} channel ...${String(l.channel_id).slice(-4)}:`, err.message);
+        // แจ้งเตือนทันทีว่าร้าน/ไลน์ไหนมีปัญหา
+        await markLineTokenError({
+          prefix: shop.prefix,
+          channelId: l.channel_id,
+          linename: l.linename,
+          reason: err.message,
+        });
       }
     }
   }
 
-  console.log(`🔄 Auto-refresh token เสร็จ: สำเร็จ ${ok} / ล้มเหลว ${fail}`);
+  console.log(`Auto-refresh token เสร็จ: สำเร็จ ${ok} / ล้มเหลว ${fail}`);
   return { ok, fail };
 }
 
@@ -142,15 +197,15 @@ export async function startTokenRefreshScheduler() {
   try {
     const last = await getLastRefresh();
     if (!last || Date.now() - last >= REFRESH_INTERVAL_MS) {
-      console.log("🔄 ถึงกำหนด refresh token (ตอน start) — เริ่ม refresh...");
+      console.log("ถึงกำหนด refresh token (ตอน start) — เริ่ม refresh...");
       await refreshAllShopTokens();
       await setLastRefresh(Date.now());
     } else {
       const nextInMs = REFRESH_INTERVAL_MS - (Date.now() - last);
-      console.log(`⏳ ยังไม่ถึงกำหนด refresh token — อีก ~${Math.round(nextInMs / 3600000)} ชม.`);
+      console.log(`ยังไม่ถึงกำหนด refresh token — อีก ~${Math.round(nextInMs / 3600000)} ชม.`);
     }
   } catch (err) {
-    console.error("❌ token refresh (start) ล้มเหลว:", err.message);
+    console.error("token refresh (start) ล้มเหลว:", err.message);
   }
 
   setInterval(async () => {
@@ -158,7 +213,7 @@ export async function startTokenRefreshScheduler() {
       await refreshAllShopTokens();
       await setLastRefresh(Date.now());
     } catch (err) {
-      console.error("❌ token refresh (interval) ล้มเหลว:", err.message);
+      console.error("token refresh (interval) ล้มเหลว:", err.message);
     }
   }, REFRESH_INTERVAL_MS);
 }
