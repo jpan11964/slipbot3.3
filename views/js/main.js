@@ -87,8 +87,37 @@ function addNewLine() {
     }
 }
 
+// สถานะกำลังเชื่อมต่อ LINE ของแต่ละ modal — ใช้กันผู้ใช้ปิดหน้าต่างกลางคัน
+const lineModalBusy = { addLineModal: false, editLineModal: false };
+
+// เปิด/ปิด overlay กำลังโหลด + disable ปุ่มบันทึก
+function setLineModalLoading(modalId, isLoading, message) {
+    lineModalBusy[modalId] = isLoading;
+
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    const overlay = modal.querySelector(".line-modal-loading");
+    if (overlay) {
+        overlay.classList.toggle("active", isLoading);
+        const text = overlay.querySelector("p");
+        if (text && message) text.innerText = message;
+    }
+
+    const saveBtn = modal.querySelector(".btn-line-save");
+    if (saveBtn) saveBtn.disabled = isLoading;
+}
+
+// ถามยืนยันถ้ายังเชื่อมต่อไม่เสร็จ — คืน true ถ้าปิดหน้าต่างได้
+function confirmCloseLineModal(modalId) {
+    if (!lineModalBusy[modalId]) return true;
+    return confirm("ยังเชื่อมต่อ LINE ไม่เสร็จ หากปิดตอนนี้ข้อมูลอาจบันทึกไม่สมบูรณ์\n\nต้องการปิดหน้าต่างเลยหรือไม่?");
+}
+
 // ปิด Modal เพิ่มบัญชี LINE
 function closeAddLineModal() {
+    if (!confirmCloseLineModal("addLineModal")) return;
+    setLineModalLoading("addLineModal", false);
     document.getElementById("addLineModal").style.display = "none";
 }
 
@@ -118,10 +147,13 @@ async function saveNewLine() {
             showAlertMessage("กรุณากรอกข้อมูลให้ครบถ้วน!", "alertMessageAddline", false);
             return;
         }
+
+        setLineModalLoading("addLineModal", true, "กำลังเชื่อมต่อ LINE...");
+
         // ใช้ window.baseURL ที่โหลดมาก่อนหน้านี้
         if (!window.baseURL) {
             await loadEnvConfig();
-        }   
+        }
         const baseURL = window.baseURL;
 
         const channelID = String(newChannelID).slice(-4); // ตัดเลข 4 ตัวท้าย
@@ -187,6 +219,7 @@ async function saveNewLine() {
         const status = apiResponse.status;
 
         if (apiResult.success) {
+        setLineModalLoading("addLineModal", false); // เคลียร์ก่อนปิด จะได้ไม่เด้งถามยืนยัน
         closeAddLineModal();
         loadShopLines(currentShopPrefix);
         } else {
@@ -205,6 +238,8 @@ async function saveNewLine() {
     } catch (err) {
         console.error("❌ เกิดข้อผิดพลาดใน saveNewLine:", err);
         showAlertMessage("เกิดข้อผิดพลาดขณะบันทึกบัญชี LINE", "alertMessageAddline", false);
+    } finally {
+        setLineModalLoading("addLineModal", false);
     }
 }
 
@@ -295,6 +330,8 @@ function editLine(prefix, index) {
 
 
 function closeEditLineModal() {
+    if (!confirmCloseLineModal("editLineModal")) return;
+    setLineModalLoading("editLineModal", false);
     document.getElementById("editLineModal").style.display = "none";
 }
 
@@ -315,6 +352,8 @@ async function saveEditedLine() {
     }
 
     try {
+        setLineModalLoading("editLineModal", true, "กำลังเชื่อมต่อ LINE...");
+
         // ใช้ window.baseURL ที่โหลดมาก่อนหน้านี้
         if (!window.baseURL) {
             await loadEnvConfig();
@@ -379,6 +418,7 @@ async function saveEditedLine() {
 
         if (apiResult.success) {
             await loadShopLines(currentEditingPrefix);
+            setLineModalLoading("editLineModal", false); // เคลียร์ก่อนปิด จะได้ไม่เด้งถามยืนยัน
             closeEditLineModal();
         } else {
             if (apiResponse.status === 409) {
@@ -393,6 +433,8 @@ async function saveEditedLine() {
     } catch (error) {
         console.error("❌ เกิดข้อผิดพลาด:", error);
         showAlertMessage("ไม่สามารถบันทึกการเปลี่ยนแปลงได้", "alertMessageEditLine", false);
+    } finally {
+        setLineModalLoading("editLineModal", false);
     }
 }
 

@@ -765,6 +765,58 @@
   box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
 }
 
+/* ปุ่มบันทึกตอนกำลังเชื่อมต่อ LINE — กันกดซ้ำ */
+.main-page .btn-line-save:disabled,
+.main-page .btn-line-save:disabled:hover {
+  background: var(--text-muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Loading overlay ใน modal เพิ่ม/แก้ไข LINE
+   (.Line-modal-content มี position: relative อยู่แล้ว) */
+.main-page .line-modal-loading {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: var(--radius-lg);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 5;
+}
+
+.main-page .line-modal-loading.active {
+  display: flex;
+}
+
+.main-page .line-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: line-modal-spin 0.8s linear infinite;
+}
+
+.main-page .line-modal-loading p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.main-page .line-modal-loading small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+@keyframes line-modal-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Add LINE button */
 .main-page .btn-add-line {
   margin-top: 14px;

@@ -4,8 +4,8 @@
     {
       "name": "slipbot",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["index.js"],
-      "port": 5000
+      "runtimeArgs": ["--dns-result-order=ipv4first", "index.js"],
+      "port": 2639
     }
   ]
 }

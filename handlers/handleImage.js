@@ -33,25 +33,12 @@ dayjs.extend(timezone);
  * @param {string} prefix - รหัสร้าน (ใช้ในการบันทึกข้อมูล)
  */
 
-let shopData = [];
-
-export async function loadShopDataFromDB() {
-  try {
-    shopData = await Shop.find({});
-  } catch (err) {
-    console.error("❌ โหลดข้อมูลร้านจาก MongoDB ไม่สำเร็จ:", err.message);
-    broadcastLog("❌ โหลดข้อมูลร้านจาก MongoDB ไม่สำเร็จ:", err.message);
-    shopData = [];
-  }
-}
-
 function getImageHash(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-// โหลดข้อมูลร้านและ settings ตอนเริ่ม
+// โหลด settings ตอนเริ่ม (เบา) — ข้อมูลร้านไม่ต้อง preload แล้ว ดูเหตุผลใน loadShopAndQRData
 (async () => {
-  await loadShopDataFromDB();
   await reloadSettings();
 })();
 
@@ -59,23 +46,18 @@ const userMessageCount = new Map(); // เก็บจำนวนสลิป�
 const seenImageHashes = new Map();
 const warnedUsersAboutDuplicateImage = new Set();
 
+// query เฉพาะร้านที่ต้องใช้ สดทุกครั้ง (แบบเดียวกับ webhook ใน index.js)
+// เดิม cache ร้านทั้งหมดด้วย Shop.find({}) ซึ่งดึง bonusImage/passwordImage มาด้วย
+// = 5.1 MB / ~40 วินาที ทำให้ timeout ตอน startup แล้ว cache ว่างค้างถาวร
+// → "ไม่พบร้านที่มี prefix" ทั้งที่ข้อมูลอยู่ครบใน DB
+// findOne เฉพาะร้าน = ~50 ms และได้ข้อมูลล่าสุดเสมอ ไม่มี cache ค้างเก่า
 async function loadShopAndQRData(prefix) {
-  // หาใน cache ก่อน
-  let shop = shopData.find((s) => s.prefix === prefix);
-
-  // ไม่เจอใน cache → query DB ตรงๆ (แบบเดียวกับ webhook ใน index.js)
-  // จำเป็นเพราะ cache ถูกโหลดตอน import module ซึ่งเกิดก่อน connectDB()
-  // ถ้าตอนนั้น MongoDB ยังต่อไม่ติด cache จะว่างค้างถาวร
-  if (!shop) {
-    try {
-      shop = await Shop.findOne({ prefix });
-      if (shop) {
-        loadShopDataFromDB(); // cache ว่าง/เก่า → โหลดใหม่เบื้องหลัง
-      }
-    } catch (err) {
-      console.error(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ:`, err.message);
-      broadcastLog(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ: ${err.message}`);
-    }
+  let shop = null;
+  try {
+    shop = await Shop.findOne({ prefix });
+  } catch (err) {
+    console.error(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ:`, err.message);
+    broadcastLog(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ: ${err.message}`);
   }
 
   if (!shop) {

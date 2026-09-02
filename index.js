@@ -12,7 +12,6 @@ import { ALL_PAGES, ALL_SHOP_BUTTONS, ALL_SETBOT_FUNCS, ALL_ADMIN_PAGES, PAGE_LA
 import { startSlip2goMonitor } from "./utils/slip2goMonitor.js";
 import * as crypto from "crypto";
 import { handleEvent } from "./handlers/handleEvent.js";
-import { loadShopDataFromDB } from "./handlers/handleImage.js";
 import { loadSettings, saveSettings, reloadSettings } from './utils/settingsManager.js';
 import BankAccount from "./models/BankAccount.js";
 import dotenv from "dotenv";
@@ -451,7 +450,10 @@ app.get("/api/slip-results", async (req, res) => {
 
 export async function loadShopData() {
   try {
-    shopData = await Shop.find().lean(); // ดึงจาก MongoDB แล้วเก็บในตัวแปร global
+    // ตัด bonusImage/passwordImage ออก — รูปพวกนี้รวมกัน ~5 MB ทำให้ query ใช้เวลา ~40 วิ
+    // จนเกิด MongoNetworkTimeoutError ตอน startup. โค้ดที่ต้องใช้รูปจะ query เองแยก
+    // แบบมี projection อยู่แล้ว (เช่น reply.js, /api/get-bonus-image)
+    shopData = await Shop.find({}, { bonusImage: 0, passwordImage: 0 }).lean();
     console.log(`✅ โหลดร้านค้าสำเร็จ ${shopData.length} ร้าน`);
   } catch (error) {
     console.error("❌ ไม่สามารถโหลดร้านค้าจาก MongoDB:", error?.stack || error);
@@ -1884,10 +1886,8 @@ export function broadcastPhoneUpdate(userId, phoneNumber, lineName) {
 // webhook ใช้ route เดียวแบบ dynamic แล้ว (ดูด้านบน) — setupWebhooks เหลือแค่ refresh cache
 const setupWebhooks = async () => {
   await loadShopData(); // refresh cache ร้านค้า (ไม่ต้อง register route อีกแล้ว)
-  // handleImage.js มี cache ร้านแยกของตัวเอง ที่โหลดตอน import (ก่อน connectDB)
-  // ต้อง refresh ที่นี่ด้วย ไม่งั้นถ้ารอบแรกโหลดไม่ทันจะค้างว่างถาวร + ไม่เห็นร้านที่เพิ่งแก้
-  await loadShopDataFromDB();
-  // settings ก็โหลดใน IIFE ตอน import เหมือนกัน — ถ้าพลาดจะค้าง {} ตลอด
+  // settings โหลดใน IIFE ตอน import ซึ่งเกิดก่อน connectDB — ถ้าพลาดจะค้าง {} ถาวร
+  // จึงต้องโหลดซ้ำที่นี่ (หลัง DB ต่อติดแล้ว)
   await reloadSettings();
 };
 
