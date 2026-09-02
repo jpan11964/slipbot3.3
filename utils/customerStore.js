@@ -3,10 +3,11 @@ import Customer from "../models/Customer.js";
 import line from "@line/bot-sdk";
 
 // ดึงชื่อโปรไฟล์ LINE จริงโดยตรง (ไม่ผ่าน getLineProfile ที่จะคืนรหัส user แทน)
-async function fetchLineDisplayName(userId, accessToken) {
+// ใช้ healing client ที่ส่งมา (heal 401 ได้) ถ้าไม่มีค่อยสร้างเอง
+async function fetchLineDisplayName(userId, accessToken, client = null) {
   try {
-    const client = new line.Client({ channelAccessToken: accessToken });
-    const profile = await client.getProfile(userId);
+    const lineClient = client || new line.Client({ channelAccessToken: accessToken });
+    const profile = await lineClient.getProfile(userId);
     return profile?.displayName || "";
   } catch (err) {
     const status = err?.status || err?.statusCode || err?.response?.status;
@@ -22,7 +23,7 @@ async function fetchLineDisplayName(userId, accessToken) {
 
 // บันทึกลูกค้าที่ทักเข้ามา (upsert ตาม userId — ไม่ซ้ำ) โดยไม่ยุ่งกับเบอร์ที่มีอยู่
 // ถ้า record ยังไม่มี displayName และมี accessToken → ดึงจาก LINE แล้วอัปเดตกลับ
-export async function recordCustomer({ userId, prefix, linename, displayName, accessToken }) {
+export async function recordCustomer({ userId, prefix, linename, displayName, accessToken, client = null }) {
   if (!userId) return;
   const set = {};
   if (prefix) set.prefix = prefix;
@@ -39,14 +40,14 @@ export async function recordCustomer({ userId, prefix, linename, displayName, ac
 
     // ลูกค้ามีอยู่แล้วแต่ยังไม่มี displayName → ดึงจาก LINE แล้วอัปเดตกลับ
     const needName = doc && (!doc.displayName || doc.displayName === "-");
-    if (needName && accessToken) {
-      const name = await fetchLineDisplayName(userId, accessToken);
+    if (needName && (client || accessToken)) {
+      const name = await fetchLineDisplayName(userId, accessToken, client);
       if (name && name !== "-") {
         await Customer.updateOne({ userId }, { $set: { displayName: name } });
         console.log(`บันทึกชื่อลูกค้า: "${name}" [${userId?.slice(-8)}]`);
       }
-    } else if (needName && !accessToken) {
-      console.warn(`⚠️ ลูกค้ายังไม่มีชื่อแต่ไม่มี accessToken [${userId?.slice(-8)}]`);
+    } else if (needName && !client && !accessToken) {
+      console.warn(`⚠️ ลูกค้ายังไม่มีชื่อแต่ไม่มี client/accessToken [${userId?.slice(-8)}]`);
     }
   } catch (err) {
     console.error("❌ บันทึกลูกค้าล้มเหลว:", err.message);

@@ -99,7 +99,7 @@ export async function handleImageEvent(event, client, prefix, linename, accessTo
           const stream = await client.getMessageContent(messageId);
           const buffer = await streamToBuffer(stream);
           const qrData = await analyzeSlipImage(buffer);
-          const profile = await getLineProfile(userId, accessToken);
+          const profile = await getLineProfile(userId, accessToken, client);
           const phoneNumber = profile?.phoneNumber || "-";
           const lineName = profile?.displayName || "-";
           recordCustomer({ userId, prefix, linename, displayName: profile?.displayName }); // เก็บชื่อโปรไฟล์ลูกค้า

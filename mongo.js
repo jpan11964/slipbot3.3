@@ -5,9 +5,13 @@ import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
 
-// บังคับ Node.js c-ares ใช้ Google DNS โดยตรง
+// บังคับ Node.js c-ares ใช้ Google DNS โดยตรง — เฉพาะ Windows เท่านั้น
 // แก้ปัญหา querySrv ECONNREFUSED บน Windows ที่ localhost DNS ไม่ตอบสนอง
-dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+// บน production (Render/Linux) ปล่อยใช้ DNS resolver ของระบบ — override ไม่จำเป็น
+// และเป็นตัวแปรที่ทำให้ resolve node ของ Atlas เพี้ยนได้
+if (process.platform === "win32") {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+}
 
 const envFile = process.env.NODE_ENV === "production" ? "info.prod.env" : "info.dev.env"
 const envPath = path.join(process.cwd(), envFile)

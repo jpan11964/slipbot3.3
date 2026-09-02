@@ -26,6 +26,7 @@ import moment from "moment-timezone";
 import { connectDB } from "./mongo.js";
 import Shop from "./models/Shop.js";
 import { checkAndSavePhoneNumber, checkAndUpdatePhoneNumber } from "./utils/savePhoneNumber.js";
+import { createHealingClient, startTokenRefreshScheduler } from "./utils/lineToken.js";
 import multer from "multer";
 
 const upload = multer();
@@ -108,7 +109,14 @@ app.post("/webhook/:prefix/:channelTag", async (req, res) => {
     const events = body.events || [];
 
     const accessToken = String(lineAccount.access_token);
-    const client = new line.Client({ channelAccessToken: accessToken });
+    // healing client — ถ้าเจอ 401 จะออก token ใหม่จาก channel_id+secret แล้ว retry ให้เอง
+    const client = createHealingClient({
+      prefix,
+      linename: lineAccount.linename,
+      channelId: lineAccount.channel_id,
+      secret: lineAccount.secret_token,
+      token: accessToken,
+    });
 
     await Promise.all(
       events.map((ev) => handleEvent(ev, client, prefix, lineAccount.linename, accessToken, baseURL))
@@ -1900,6 +1908,7 @@ app.listen(PORT, async () => {
     await loadBankAccounts();
     await setupWebhooks();
     startSlip2goMonitor(); // เริ่มมอนิเตอร์โควต้า Slip2Go + แจ้งเตือน Telegram
+    startTokenRefreshScheduler(); // auto-refresh LINE token ทุก 4 วัน + catch-up ตอน start
     console.log("All services initialized");
   } catch (err) {
     console.error("Initialization failed:", err);

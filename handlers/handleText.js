@@ -132,7 +132,7 @@ async function handleReply(userId, event, replyToken, client, category, prefix, 
     const withdrawcount = hasCategoryInHour(userId, category);
     const nowMinutes = getTime();
 
-    const profile = await getLineProfile(userId, accessToken);
+    const profile = await getLineProfile(userId, accessToken, client);
     const thaiTime = dayjs().tz("Asia/Bangkok").format("HH:mm") + " น.";
     const phoneNumber = profile?.phoneNumber || "-";
     const lineName = profile?.displayName || "-";

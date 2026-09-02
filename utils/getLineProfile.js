@@ -1,7 +1,7 @@
 import line from "@line/bot-sdk";
 import Phone from '../models/Phone.js'; // ดึง user จาก MongoDB
 
-export async function getLineProfile(userId, accessToken) {
+export async function getLineProfile(userId, accessToken, client = null) {
   if (!userId || !accessToken) {
     console.warn("⚠️ userId หรือ accessToken ไม่ถูกต้อง", {
       userId,
@@ -25,8 +25,9 @@ export async function getLineProfile(userId, accessToken) {
     }
 
     // ถ้าไม่มีข้อมูล user → ลองดึงโปรไฟล์จาก LINE
-    const client = new line.Client({ channelAccessToken: accessToken });
-    const profile = await client.getProfile(userId);
+    // ใช้ healing client ที่ส่งมา (heal 401 ได้) ถ้าไม่มีค่อยสร้างเอง
+    const lineClient = client || new line.Client({ channelAccessToken: accessToken });
+    const profile = await lineClient.getProfile(userId);
     return {
       displayName: profile?.displayName || "-",
     };
