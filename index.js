@@ -12,6 +12,7 @@ import { ALL_PAGES, ALL_SHOP_BUTTONS, ALL_SETBOT_FUNCS, ALL_ADMIN_PAGES, PAGE_LA
 import { startSlip2goMonitor } from "./utils/slip2goMonitor.js";
 import * as crypto from "crypto";
 import { handleEvent } from "./handlers/handleEvent.js";
+import { loadShopDataFromDB } from "./handlers/handleImage.js";
 import { loadSettings, saveSettings, reloadSettings } from './utils/settingsManager.js';
 import BankAccount from "./models/BankAccount.js";
 import dotenv from "dotenv";
@@ -1883,6 +1884,11 @@ export function broadcastPhoneUpdate(userId, phoneNumber, lineName) {
 // webhook ใช้ route เดียวแบบ dynamic แล้ว (ดูด้านบน) — setupWebhooks เหลือแค่ refresh cache
 const setupWebhooks = async () => {
   await loadShopData(); // refresh cache ร้านค้า (ไม่ต้อง register route อีกแล้ว)
+  // handleImage.js มี cache ร้านแยกของตัวเอง ที่โหลดตอน import (ก่อน connectDB)
+  // ต้อง refresh ที่นี่ด้วย ไม่งั้นถ้ารอบแรกโหลดไม่ทันจะค้างว่างถาวร + ไม่เห็นร้านที่เพิ่งแก้
+  await loadShopDataFromDB();
+  // settings ก็โหลดใน IIFE ตอน import เหมือนกัน — ถ้าพลาดจะค้าง {} ตลอด
+  await reloadSettings();
 };
 
 // เรียกหลังแก้ข้อมูลร้าน/LINE/ธนาคาร — refresh cache เท่านั้น (route ไม่ต้องสร้างใหม่)

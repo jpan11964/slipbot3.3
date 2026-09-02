@@ -60,8 +60,24 @@ const seenImageHashes = new Map();
 const warnedUsersAboutDuplicateImage = new Set();
 
 async function loadShopAndQRData(prefix) {
+  // หาใน cache ก่อน
+  let shop = shopData.find((s) => s.prefix === prefix);
 
-  const shop = shopData.find((s) => s.prefix === prefix);
+  // ไม่เจอใน cache → query DB ตรงๆ (แบบเดียวกับ webhook ใน index.js)
+  // จำเป็นเพราะ cache ถูกโหลดตอน import module ซึ่งเกิดก่อน connectDB()
+  // ถ้าตอนนั้น MongoDB ยังต่อไม่ติด cache จะว่างค้างถาวร
+  if (!shop) {
+    try {
+      shop = await Shop.findOne({ prefix });
+      if (shop) {
+        loadShopDataFromDB(); // cache ว่าง/เก่า → โหลดใหม่เบื้องหลัง
+      }
+    } catch (err) {
+      console.error(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ:`, err.message);
+      broadcastLog(`❌ query ร้าน ${prefix} จาก MongoDB ไม่สำเร็จ: ${err.message}`);
+    }
+  }
+
   if (!shop) {
     console.log(`❌ ไม่พบร้านที่มี prefix: ${prefix}`);
     broadcastLog(`❌ ไม่พบร้านที่มี prefix: ${prefix}`);
