@@ -20,6 +20,12 @@ async function initPermissionsPage() {
   }
 
   list.innerHTML = data.users.map(user => renderUserCard(user, data)).join("");
+
+  // ต้องตั้ง guard ที่นี่ ไม่ใช่ระดับ top-level ของไฟล์
+  // เพราะ loadPage โหลดสคริปต์ของแต่ละหน้าแค่ครั้งเดียว (window.__loadedScripts)
+  // แต่ล้าง __pageLeaveGuard ทุกครั้งที่เปลี่ยนหน้า — ถ้าตั้งที่ top-level
+  // พอเข้าหน้านี้รอบสองเป็นต้นไป guard จะไม่ถูกตั้งอีกเลย
+  window.__pageLeaveGuard = permissionsLeaveGuard;
 }
 
 function renderUserCard(user, data) {
@@ -156,17 +162,102 @@ async function saveUserPermissions(btn) {
     if (result.success) {
       status.textContent = "บันทึกเรียบร้อย";
       status.className = "perm-status success";
+      delete card.dataset.dirty;   // บันทึกแล้ว = ไม่ค้าง
+      return true;
     } else {
       status.textContent = result.message || "เกิดข้อผิดพลาด";
       status.className = "perm-status error";
+      return false;
     }
   } catch (err) {
     status.textContent = "เชื่อมต่อล้มเหลว";
     status.className = "perm-status error";
+    return false;
   } finally {
     btn.disabled = false;
     setTimeout(() => { if (status) status.textContent = ""; }, 3000);
   }
+}
+
+// ===== เตือนเมื่อยังไม่ได้บันทึกสิทธิ์ แล้วจะออกจากหน้า =====
+
+// ติ๊ก checkbox ในการ์ดไหน = การ์ดนั้นมีการแก้ที่ยังไม่บันทึก
+document.addEventListener("change", (e) => {
+  const card = e.target.closest?.(".perm-card");
+  if (card && e.target.matches('input[type="checkbox"][data-group]')) {
+    card.dataset.dirty = "1";
+  }
+});
+
+function getDirtyCards() {
+  return Array.from(document.querySelectorAll('.perm-card[data-dirty="1"]'));
+}
+
+// สร้างกล่องถามแบบ 2 ตัวเลือก — คืน "save" หรือ "leave"
+// ประกอบ DOM เองแทนการต่อ string เพื่อไม่ต้องพึ่ง escapeHTML (global จาก index.html)
+// ถ้าฟังก์ชันนี้ throw จะทำให้ await ใน loadPage พังจนเปลี่ยนหน้าไม่ได้เลย
+function askUnsavedPermissions(usernames) {
+  return new Promise((resolve) => {
+    const box = document.createElement("div");
+    box.className = "perm-modal";
+
+    const inner = document.createElement("div");
+    inner.className = "perm-modal-box";
+
+    const head = document.createElement("div");
+    head.className = "perm-modal-head";
+    const h3 = document.createElement("h3");
+    h3.textContent = "ยังไม่ได้บันทึกสิทธิ์";
+    head.appendChild(h3);
+
+    const text = document.createElement("p");
+    text.className = "perm-unsaved-text";
+    text.append("ยังไม่ได้ทำการบันทึกสิทธิ์ ผู้ใช้ ");
+    const names = document.createElement("strong");
+    names.textContent = usernames.join(", ");   // textContent = ปลอดภัยจาก HTML injection
+    text.append(names, document.createElement("br"), "จะทำการบันทึกไหม?");
+
+    const actions = document.createElement("div");
+    actions.className = "perm-unsaved-actions";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "perm-modal-save";
+    saveBtn.dataset.act = "save";
+    saveBtn.textContent = "บันทึกทั้งหมด";
+
+    const leaveBtn = document.createElement("button");
+    leaveBtn.className = "perm-unsaved-leave";
+    leaveBtn.dataset.act = "leave";
+    leaveBtn.textContent = "ออกโดยไม่บันทึก";
+
+    actions.append(saveBtn, leaveBtn);
+    inner.append(head, text, actions);
+    box.appendChild(inner);
+    document.body.appendChild(box);
+
+    box.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (!act) return;   // คลิกนอกปุ่มไม่ปิด — ต้องเลือกอย่างใดอย่างหนึ่ง
+      box.remove();
+      resolve(act);
+    });
+  });
+}
+
+// loadPage เรียกก่อนเปลี่ยนหน้า — คืน true = ออกได้
+// (ผูกเข้ากับ window.__pageLeaveGuard ใน initPermissionsPage ทุกครั้งที่เข้าหน้านี้)
+async function permissionsLeaveGuard() {
+  const dirty = getDirtyCards();
+  if (!dirty.length) return true;
+
+  const choice = await askUnsavedPermissions(dirty.map((c) => c.dataset.username));
+  if (choice === "save") {
+    for (const card of dirty) {
+      const btn = card.querySelector(".perm-save-btn");
+      if (btn) await saveUserPermissions(btn);
+    }
+  }
+  return true; // ทั้งสองตัวเลือกคือออกจากหน้า
 }
 
 // ===== Modal: สร้างบัญชีใหม่ =====

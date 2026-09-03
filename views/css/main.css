@@ -12,6 +12,22 @@
 
 /* Scrollable lists */
 /* ตัวกรองเลือกร้าน */
+/* คอลัมน์ของ "ตัวกรอง + รายการร้าน" — กว้างเท่ารายการร้าน แล้วจัดกึ่งกลาง
+   ทำให้ปุ่มแสดงร้านอยู่แนวเดียวกับขอบซ้ายของการ์ดเสมอ ไม่ว่าการ์ดจะกว้างเท่าไหร่
+   (หัวข้อหน้าอยู่นอกคอลัมน์นี้ จึงยังกึ่งกลางจอตามเดิม) */
+.main-page .shop-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;      /* จำเป็น ไม่งั้น .shop-list จะดันคอลัมน์สูงเกินจนเลื่อนไม่ได้ */
+  width: fit-content;
+  /* ความกว้างขั้นต่ำย้ายมาไว้ที่นี่ — % อิงความกว้างของ .main-container ที่นิ่งแล้ว
+     (ถ้าไปใส่ใน .shop-list ที่อยู่ใน fit-content จะวนกลับหาตัวเองจนไม่มีผล) */
+  min-width: min(640px, 100%);
+  max-width: 100%;
+  margin: 0 auto;
+}
+
 .main-page .shop-filter-bar {
   margin-bottom: 16px;
   display: flex;
@@ -25,7 +41,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
+  /* เว้นหน้าไอคอนกรวยมากกว่าอีก 4px ไม่ให้ดูชิดขอบซ้าย
+     (ไม่ใช้ margin เพราะปุ่มต้องชิดซ้ายตรงกับหัวข้อด้านบน) */
+  padding: 9px 14px 9px 18px;
   background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -110,6 +128,18 @@
   padding-right: 2px;
 }
 
+/* ความกว้างแถวร้านขึ้นกับปุ่มที่ผู้ใช้มีสิทธิ์เห็นจริง — สิทธิ์น้อย แถวก็สั้นลง
+   grid คอลัมน์เดียวแบบ max-content: ทุกแถวกว้างเท่ากับแถวที่กว้างที่สุด (ขอบขวาเสมอกัน)
+   ต่างจาก flex เดิมที่ align-items: stretch ยืดเต็มจอเสมอแม้มีปุ่มเดียว
+   minmax(0, ...) เผื่อจอแคบกว่าเนื้อหา ให้หดลงมาแทนที่จะดันจนล้น */
+.main-page .shop-list {
+  display: grid;
+  /* 1fr = การ์ดยืดเต็มความกว้างของ .shop-column เสมอ (ทุกใบจึงกว้างเท่ากัน)
+     ความกว้างจริงถูกกำหนดโดย .shop-column = max(เนื้อหาที่กว้างที่สุด, ขั้นต่ำ 640px) */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
 .main-page .shop-list::-webkit-scrollbar,
 .main-page .bank-list::-webkit-scrollbar {
   width: 4px;
@@ -128,13 +158,18 @@
   align-items: center;
   background: var(--white);
   border-radius: var(--radius);
-  min-width: 800px;
+  position: relative;   /* จุดยึดของเมนู Kebab บนมือถือ */
   padding: 14px 18px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
   gap: 10px;
   transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+/* เมนู Kebab ของการ์ดร้าน — ใช้เฉพาะจอมือถือ (เปิดใน mobile.css) */
+.main-page .shop-row-menu {
+  display: none;
 }
 
 .main-page .shop-item:hover {
@@ -166,6 +201,13 @@
 
 .main-page .inactive .status-dot {
   background-color: var(--text-light);
+}
+
+/* ล็อกความกว้างช่องชื่อร้าน (ชื่อเองถูกจำกัด 200px อยู่แล้ว)
+   ไม่งั้นเวลาแถวหดตามปุ่ม ชื่อสั้น-ยาวจะทำให้ปุ่มของแต่ละแถวไม่ตรงกัน */
+.main-page .shop-item .shop-info {
+  flex: 0 0 auto;
+  min-width: 250px;
 }
 
 .main-page .shop-name {
@@ -435,6 +477,31 @@
   border-bottom: none;
 }
 
+/* แถวบัญชีธนาคาร: ชื่อบัญชีบรรทัดบน เลขบัญชีบรรทัดล่าง
+   ชิดซ้ายเพราะสองบรรทัดจัดกึ่งกลางแล้วอ่านยาก (modal ตั้ง text-align: center ไว้) */
+.main-page .bank-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+/* .shop-name ถูกจำกัด 200px ไว้สำหรับรายการร้าน — ในกล่องนี้ให้ยืดเต็มที่ */
+.main-page .bank-text .shop-name {
+  max-width: none;
+  width: 100%;
+}
+
+.main-page .bank-account-no {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
 .bank-status.active {
   color: var(--green-dark);
   font-weight: 600;
@@ -550,16 +617,20 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* ความกว้างคิดจากเนื้อหาจริง: ไฟสถานะ + ชื่อ + ปุ่ม + ระยะขอบ
+   ชื่อไลน์ OA / ชื่อบัญชีคนไทย ปกติยาวไม่เกิน ~30 ตัวอักษร (~270px)
+   เดิมตั้งไว้ 800px จึงเหลือที่ว่างกลางกล่องเยอะเกินไป */
 .main-page .showLine-modal-content {
   padding: 32px;
-  width: 800px;
+  width: 520px;
   min-height: 200px;
   text-align: center;
 }
 
+/* กว้างกว่าหน่อยเพราะมีสวิตช์เปิด-ปิดเพิ่มมาอีกช่อง */
 .main-page .bank-modal-content {
   padding: 32px;
-  width: 800px;
+  width: 560px;
   min-height: 200px;
   text-align: center;
 }
@@ -766,17 +837,28 @@
 }
 
 /* เครื่องหมายเตือนหน้าชื่อไลน์ที่หลุดการเชื่อมต่อ */
-.main-page .line-token-error {
+/* ไฟสถานะประจำไลน์ — ช่องเดียวกัน สลับสีตามสถานะ (กว้างคงที่ ทุกแถวจึงเรียงตรงกัน) */
+.main-page .line-status {
   position: relative;
-  display: inline-block;
-  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
   font-size: 15px;
   cursor: default;
-  vertical-align: -1px;
+}
+
+.main-page .line-token-error { color: var(--red); }
+
+/* ไลน์ทำงานปกติ — จุดเขียวเล็กกว่าไอคอนเตือน เพื่อไม่ให้เด่นเกินจำเป็น */
+.main-page .line-ok {
+  color: var(--green);
+  font-size: 11px;
 }
 
 /* ข้อความลอย — ทำเองเพราะ tooltip ของเบราว์เซอร์ปรับขนาดตัวอักษรไม่ได้ */
-.main-page .line-token-error::after {
+.main-page .line-status::after {
   content: attr(data-tip);
   position: absolute;
   /* ยึดขอบซ้ายของไอคอน ไม่จัดกึ่งกลาง — กันข้อความล้นออกนอกจอเมื่อไอคอนอยู่ชิดซ้าย */
@@ -800,7 +882,7 @@
 }
 
 /* ลูกศรชี้ลงใต้กล่องข้อความ */
-.main-page .line-token-error::before {
+.main-page .line-status::before {
   content: "";
   position: absolute;
   left: 2px;
@@ -814,8 +896,8 @@
   z-index: 100;
 }
 
-.main-page .line-token-error:hover::after,
-.main-page .line-token-error:hover::before {
+.main-page .line-status:hover::after,
+.main-page .line-status:hover::before {
   opacity: 1;
   visibility: visible;
 }
@@ -897,6 +979,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 13px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -904,6 +987,82 @@
   min-height: 48px;
   background: #fafbfc;
 }
+
+/* ชื่อยาวเกินให้ตัดด้วย ... แทนที่จะดันปุ่มจนแถวเรียงไม่ตรงกัน */
+.main-page .row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== เมนู Kebab (จุดสามจุดแนวตั้ง) ประจำแถว ===== */
+.main-page .row-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.main-page .kebab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.main-page .kebab-btn:hover {
+  background: var(--border-light);
+  color: var(--text);
+}
+
+.main-page .row-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 150px;
+  padding: 5px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 60;
+}
+
+.main-page .row-menu-list[hidden] { display: none; }
+
+.main-page .row-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.main-page .row-menu-list button:hover { background: var(--bg); }
+
+.main-page .row-menu-list button.danger { color: var(--red); }
+
+.main-page .row-menu-list button.danger:hover { background: rgba(239, 68, 68, 0.08); }
 
 .main-page .line-btn-edit,
 .line-btn-delete {

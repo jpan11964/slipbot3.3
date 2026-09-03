@@ -96,6 +96,7 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 | `lineSendingImage.js` | Temp image storage for admin send-message feature |
 | `Customer.js` | ลูกค้าทุกคนที่ทักเข้ามา (userId, prefix, linename, displayName, phone) |
 | `Notification.js` | การแจ้งเตือนระบบ (TTL 30 วัน) — ใช้ผ่าน `utils/notificationStore.js` |
+| `Log.js` | log การใช้งาน (TTL 3 วัน) — กู้กลับเข้า memory ตอน start |
 
 ### Shop Schema Key Fields
 ```js
@@ -288,6 +289,17 @@ Multi-page SPA loaded via `/page/:name` (authenticated):
     - `startTokenRefreshScheduler()` ต่ออายุอัตโนมัติ **ทุก 4 วัน** (เก็บเวลาใน `settings` key `token-refresh-meta`)
     - `createHealingClient()` จับ 401 → ออก token ใหม่ → retry ใน event เดิม (ลูกค้ายังได้รับการตอบกลับ)
     - ถ้าออก token ไม่ได้ → ตั้ง `lines[].tokenError = true` + ยิงการแจ้งเตือน
+
+12. **Log ย้อนหลังสูงสุด 3 วัน — persist ลง MongoDB แล้ว ไม่หายตอน restart**
+    - อ่านจาก `logHistory` ใน memory เสมอ (เร็ว) — `MAX_LOGS = 20000` เป็นเพดานกันหน่วยความจำ
+    - เขียนลง collection `logs` แบบ **buffer** (`queueLogWrite`) แล้ว `insertMany` ทุก 2 วิ
+      หรือเมื่อครบ 50 รายการ — บอทยิง log ถี่มาก ยิงทีละบรรทัดจะหนัก DB
+      เขียนไม่สำเร็จก็แค่ log console ต่อ ไม่ทำให้บอทล่ม
+    - `loadLogsFromDB()` กู้กลับเข้า memory ตอน start (เรียกหลัง `connectDB()`)
+    - ลบของเก่า 2 ชั้น: `pruneLogHistory()` ตัดใน memory + TTL index บน `ts` ให้ MongoDB ลบเอง
+      **ทั้งสองที่ต้องใช้ 3 วันเท่ากันเสมอ** (`LOG_RETENTION_DAYS` ใน `index.js` / `models/Log.js`)
+    > ตัวกรองช่วงเวลาในหน้า Logs มีแค่ 1 วัน / 3 วัน ตามอายุที่เก็บจริง
+    > ถ้าจะเพิ่มตัวเลือกที่ยาวกว่านี้ ต้องขยาย retention ทั้งสองที่ก่อน
 
 11. **การแจ้งเตือนเก็บใน memory เป็นหลัก** — เพราะต้องแจ้ง "MongoDB ล่ม" ได้ตอน MongoDB ล่ม
     persist ลง DB แบบ best-effort และ `loadNotificationsFromDB()` กู้กลับตอน start

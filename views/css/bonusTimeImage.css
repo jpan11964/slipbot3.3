@@ -52,18 +52,16 @@
   color: var(--text-muted);
 }
 
-.bonus-actions,
-.password-actions {
+.bonus-actions {
   display: flex;
   justify-content: center;
   gap: 10px;
   margin-top: 6px;
 }
 
-.bonus-btn-save,
 .bonus-btn-delete {
   min-width: 80px;
-  padding: 7px 0;
+  padding: 7px 14px;
   margin-top: 6px;
   border: none;
   border-radius: var(--radius-sm);
@@ -72,26 +70,17 @@
   font-family: inherit;
   font-weight: 600;
   color: var(--white);
-  transition: background 0.15s, box-shadow 0.15s;
-}
-
-.bonus-btn-save {
-  background: var(--green);
-}
-
-.bonus-btn-save:hover {
-  background: var(--green-dark);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-
-.bonus-btn-delete {
   background: var(--red);
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .bonus-btn-delete:hover {
   background: var(--red-dark);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
+
+/* ปุ่มนี้โผล่เฉพาะตอนมีรูปครบ 2 รูป (มีรูปเดียวใช้ปุ่ม X บนรูปได้เลย) */
+.bonus-btn-delete[hidden] { display: none; }
 
 .bonus-preview {
   margin-top: 14px;
@@ -101,61 +90,184 @@
   flex-wrap: wrap;
 }
 
-.image-wrapper {
+/* ===== สล็อตรูป BonusTime =====
+   ทั้งรูปคือปุ่มเปลี่ยนรูป — ชี้แล้วขึ้นข้อความบอก
+   ปุ่มลบอยู่มุมขวาบน สีปกติ แล้วเปลี่ยนเป็นแดงตอนชี้โดน */
+.image-slot {
   position: relative;
-  display: inline-flex;
+  width: 132px;
+  height: 132px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.image-slot[hidden] { display: none; }
+
+.image-slot:hover {
+  border-color: var(--blue);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.22);
+}
+
+.image-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: filter 0.25s, transform 0.25s;
+}
+
+.image-slot:hover img { transform: scale(1.05); }
+
+/* ข้อความตอนชี้ที่รูป */
+.slot-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-}
-
-.image-wrapper img {
-  max-width: 130px;
-  max-height: 130px;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  object-fit: contain;
-  display: block;
-}
-
-.image-slot-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.image-wrapper .change-btn {
-  font-size: 11.5px;
-  padding: 4px 10px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--blue);
-  color: var(--white);
-  cursor: pointer;
-  font-family: inherit;
-  font-weight: 500;
-  transition: background 0.15s;
-}
-
-.image-wrapper .change-btn:hover {
-  background: var(--blue-dark);
-}
-
-.image-wrapper .delete-btn {
+  padding: 8px;
+  background: rgba(12, 22, 40, 0.55);
+  color: #fff;
   font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.18s;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.slot-hint i { font-size: 19px; }
+
+.image-slot:hover .slot-hint { opacity: 1; }
+
+/* ปุ่มลบมุมขวาบน */
+.slot-remove {
+  position: absolute;
+  top: 7px;
+  right: 7px;
   width: 26px;
   height: 26px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--red);
-  color: var(--white);
-  cursor: pointer;
-  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 3;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
 
-.image-wrapper .delete-btn:hover {
-  background: var(--red-dark);
+.slot-remove:hover {
+  background: var(--red);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+/* ===== ตอนเปิด modal: บังทั้งกล่องด้วยสปินเนอร์วงเดียว =====
+   เดิมใส่สปินเนอร์ทีละสล็อต ทำให้ยังเห็นกรอบ 2 ช่อง เหมือนมีรูปอยู่แล้ว */
+.main-page .setting-box { position: relative; }
+
+.box-loading {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border-radius: inherit;
+  z-index: 10;
+}
+
+.setting-box.is-checking .box-loading { display: flex; }
+
+/* ซ่อนเนื้อหาข้างใต้ไว้เลย จะได้ไม่เห็นกรอบว่างแวบๆ */
+.setting-box.is-checking > *:not(.box-loading) { visibility: hidden; }
+
+.box-loading .slot-spinner {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+
+/* สถานะระดับสล็อต — ใช้กันไม่ให้อะไรแวบตอน overlay ยกออก */
+.image-slot.is-checking {
+  cursor: default;
+  background: var(--bg);
+}
+
+.image-slot.is-checking img { opacity: 0; }
+
+.image-slot.is-checking .slot-hint,
+.image-slot.is-checking .slot-remove {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.image-slot.is-checking .slot-loading {
+  display: flex;
+  background: transparent;
+}
+
+.image-slot.is-checking:hover {
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+/* ปุ่มอัปโหลดถูกล็อกระหว่างตรวจสอบ */
+.bonus-upload.is-locked,
+.password-upload.is-locked {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ===== ระหว่างอัปโหลด: เบลอรูปที่เลือก + สปินเนอร์ ===== */
+.image-slot.is-loading { cursor: default; }
+
+.image-slot.is-loading img {
+  filter: blur(7px) brightness(0.85);
+  transform: none;
+}
+
+.image-slot.is-loading .slot-hint,
+.image-slot.is-loading .slot-remove {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slot-loading {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 4;
+}
+
+.image-slot.is-loading .slot-loading { display: flex; }
+
+.slot-spinner {
+  width: 34px;
+  height: 34px;
+  /* สีเทาอ่อน — มองเห็นได้ทั้งบนพื้นสว่าง (ตอนตรวจสอบ) และบนรูปเบลอ (ตอนอัปโหลด) */
+  border: 3px solid rgba(148, 163, 184, 0.4);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: slot-spin 0.7s linear infinite;
+}
+
+@keyframes slot-spin {
+  to { transform: rotate(360deg); }
 }

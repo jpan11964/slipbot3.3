@@ -20,8 +20,19 @@
   <link rel="stylesheet" href="/views/css/permissions.css">
   <link rel="stylesheet" href="/views/css/prefixes.css">
   <link rel="stylesheet" href="/views/css/customers.css">
+  <!-- ต้องอยู่ท้ายสุด — override layout ของไฟล์ด้านบนสำหรับจอมือถือ -->
+  <link rel="stylesheet" href="/views/css/mobile.css">
 </head>
 <body>
+  <!-- แถบบนเฉพาะมือถือ (ซ่อนบนจอใหญ่ด้วย mobile.css) -->
+  <header class="mobile-topbar">
+    <button class="mobile-menu-btn" onclick="toggleSidebar(event)" aria-label="เปิดเมนู">
+      <i class="bi bi-list"></i>
+    </button>
+    <span class="mobile-title"><i class="bi bi-shield-check"></i> $lipCheck</span>
+  </header>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+
   <aside class="sidebar">
     <div class="logo">
       <i class="bi bi-shield-check"></i>
@@ -108,14 +119,22 @@
         <h3>เปลี่ยนรหัสผ่าน</h3>
         <button class="perm-modal-close" onclick="closeChangePwModal()">&times;</button>
       </div>
-      <div class="perm-field">
-        <label>รหัสผ่านปัจจุบัน</label>
-        <input type="password" id="currentPassword" autocomplete="off">
-      </div>
-      <div class="perm-field">
-        <label>รหัสผ่านใหม่</label>
-        <input type="password" id="newPassword" autocomplete="off">
-      </div>
+      <!-- ช่องรหัสผ่านอยู่ใน <template> — เนื้อหาใน template ไม่ถือเป็นส่วนหนึ่งของเอกสาร
+           เบราว์เซอร์จึงมองไม่เห็นช่อง password ตอนใช้งานหน้าอื่น
+           แก้ปัญหา Chrome เด้งถามบันทึกรหัสผ่านตอนพิมพ์ค้นหา/บันทึกข้อมูลลูกค้า
+           (Chrome จงใจเพิกเฉยกับ autocomplete="off" บนช่อง password จึงต้องใช้วิธีนี้)
+           จะถูก clone เข้ามาเมื่อเปิด modal และถูกลบออกเมื่อปิด -->
+      <template id="changePwTemplate">
+        <div class="perm-field">
+          <label>รหัสผ่านปัจจุบัน</label>
+          <input type="password" id="currentPassword" autocomplete="current-password">
+        </div>
+        <div class="perm-field">
+          <label>รหัสผ่านใหม่</label>
+          <input type="password" id="newPassword" autocomplete="new-password">
+        </div>
+      </template>
+      <div id="changePwFields"></div>
       <div class="perm-modal-status" id="changePwStatus"></div>
       <button class="perm-modal-save" onclick="submitChangePw()">บันทึก</button>
     </div>
@@ -133,11 +152,38 @@
       content.innerHTML = `<p style="text-align:center;padding-top:60px;font-size:14px;color:#64748b;">${message}</p>`
     }
 
-    function loadPage(event, page) {
+    async function loadPage(event, page, opts = {}) {
       if (event) event.preventDefault?.()
 
+      // หน้าที่มีข้อมูลค้างยังไม่บันทึกจะตั้ง window.__pageLeaveGuard ไว้
+      // (เช่น หน้าจัดการสิทธิ์) — ถามผู้ใช้ก่อนเปลี่ยนหน้า
+      if (typeof window.__pageLeaveGuard === "function") {
+        let canLeave = true
+        try {
+          canLeave = await window.__pageLeaveGuard()
+        } catch (err) {
+          // guard พังต้องไม่ทำให้ติดอยู่หน้าเดิมตลอดไป — ปล่อยผ่านไปก่อน
+          console.error("ตรวจข้อมูลค้างก่อนเปลี่ยนหน้าล้มเหลว:", err)
+        }
+        if (!canLeave) return
+      }
+      // ออกจากหน้าเดิมแล้ว — ล้างทิ้ง หน้าใหม่จะตั้งของตัวเองถ้าต้องการ
+      window.__pageLeaveGuard = null
+
+      // บันทึกลงประวัติเบราว์เซอร์ เพื่อให้ปุ่มย้อนกลับถอยทีละเมนู
+      // (หน้าแรกใช้ replaceState — ไม่งั้นต้องกดย้อนกลับ 2 ครั้งถึงจะออกจากเว็บ)
+      if (!opts.fromPopstate) {
+        const st = { kind: "page", page }
+        if (window.__currentPage == null) history.replaceState(st, "")
+        else history.pushState(st, "")
+      }
+      window.__currentPage = page
+      // จำหน้าล่าสุดไว้ ให้รีเฟรชแล้วกลับมาหน้าเดิม
+      try { sessionStorage.setItem("lastPage", page) } catch {}
+
       document.querySelectorAll(".sidebar li").forEach(li => li.classList.remove("active"))
-      const li = event?.target?.closest?.("li")
+      // ย้อนกลับด้วยปุ่มเบราว์เซอร์จะไม่มี event — หา li จากชื่อหน้าแทน
+      const li = event?.target?.closest?.("li") || document.querySelector(`.sidebar li[data-page="${page}"]`)
       if (li) li.classList.add("active")
 
       showLoading()
@@ -196,35 +242,224 @@
           if (page === "logs") {
             const logsContainer = document.getElementById("logs")
             const scrollEl = logsContainer.closest(".logs-wrapper") || logsContainer
+            const searchEl = document.getElementById("logsSearch")
+            const fromEl = document.getElementById("logsFrom")
+            const toEl = document.getElementById("logsTo")
+            const clearEl = document.getElementById("logsClear")
+            const countEl = document.getElementById("logsCount")
+            const quickEl = document.getElementById("logsQuick")
+
             let logsLoaded = 0
+            let logsTotal = 0
             let logsAllLoaded = false
             let logsLoading = false
 
-            function makeLogEntry(text, isError) {
+            const THAI_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."]
+
+            function makeLogEntry(entry, isError) {
+              // entry เป็น { ts, text } — รองรับ string เดิมด้วยเผื่อ log เก่าค้างอยู่
+              const raw = typeof entry === "string" ? entry : entry.text
+              const ts = typeof entry === "string" ? null : entry.ts
+
               const el = document.createElement("div")
               el.className = "log-entry" + (isError ? " error" : "")
-              el.textContent = text
+
+              // ตัด prefix "[ HH:mm ] " ออกจากข้อความ แล้วเอาเวลาไปแสดงเป็นป้ายแยก
+              const m = raw.match(/^\[\s*(\d{1,2}:\d{2})\s*\]\s*(.*)$/s)
+              const timeText = m ? m[1] : ""
+              const msgText = m ? m[2] : raw
+
+              if (timeText) {
+                const timeEl = document.createElement("span")
+                timeEl.className = "log-time"
+
+                // ถ้าไม่ใช่วันนี้ ให้บอกวันที่ด้วย จะได้ไม่สับสนตอนกรองย้อนหลังหลายวัน
+                if (ts) {
+                  const d = new Date(ts)
+                  if (d.toDateString() !== new Date().toDateString()) {
+                    const dateEl = document.createElement("span")
+                    dateEl.className = "log-date"
+                    dateEl.textContent = `${d.getDate()} ${THAI_MONTHS[d.getMonth()]}`
+                    timeEl.appendChild(dateEl)
+                  }
+                }
+                // ต้องห่อเวลาเป็น element ด้วย ไม่งั้น gap ของ flex จะไม่มีผล
+                // (text node เปล่าๆ ไม่นับเป็น flex item — วันที่กับเวลาจะติดกัน)
+                const hm = document.createElement("span")
+                hm.textContent = timeText
+                timeEl.appendChild(hm)
+                el.appendChild(timeEl)
+              }
+
+              const msgEl = document.createElement("span")
+              msgEl.className = "log-msg"
+              msgEl.textContent = msgText
+              el.appendChild(msgEl)
+
+              if (ts) {
+                el.dataset.ts = ts
+                el.title = new Date(ts).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "medium" })
+              }
               return el
             }
 
+            // datetime-local ให้ค่าเป็นเวลาท้องถิ่นแบบไม่มี timezone — แปลงเป็น ISO ก่อนส่ง
+            const toISO = (v) => (v ? new Date(v).toISOString() : "")
+
+            function filterQuery() {
+              const p = new URLSearchParams()
+              if (searchEl.value.trim()) p.set("q", searchEl.value.trim())
+              if (fromEl.value) p.set("from", toISO(fromEl.value))
+              if (toEl.value) p.set("to", toISO(toEl.value))
+              return p.toString()
+            }
+
+            // สถานะกลางกล่อง log (กำลังโหลด / ไม่พบ / ผิดพลาด)
+            // เดิมไม่มีอะไรเลย พอกรองแล้วไม่เจอ กล่องจะว่างเปล่าจนดูเหมือนค้าง
+            function setLogsState(kind, text, hint) {
+              logsContainer.innerHTML = ""
+              const box = document.createElement("div")
+              box.className = "logs-state" + (kind === "error" ? " error" : "")
+
+              if (kind === "loading") {
+                const sp = document.createElement("div")
+                sp.className = "logs-spinner"
+                box.appendChild(sp)
+              } else {
+                const ic = document.createElement("i")
+                ic.className = "bi " + (kind === "error" ? "bi-exclamation-triangle" : "bi-inbox")
+                box.appendChild(ic)
+              }
+
+              const t = document.createElement("span")
+              t.className = "logs-state-text"
+              t.textContent = text
+              box.appendChild(t)
+
+              if (hint) {
+                const h = document.createElement("span")
+                h.className = "logs-state-hint"
+                h.textContent = hint
+                box.appendChild(h)
+              }
+              logsContainer.appendChild(box)
+            }
+
+            const clearLogsState = () => logsContainer.querySelector(".logs-state")?.remove()
+
             // โหลดประวัติ log (ใหม่→เก่า) — initial 200, เลื่อนถึงล่างสุดโหลดเพิ่มทีละ 100
             async function loadLogsHistory(initial) {
-              if (logsLoading || logsAllLoaded) return
+              if (logsLoading || (!initial && logsAllLoaded)) return
               logsLoading = true
+              if (initial) {
+                setLogsState("loading", "กำลังโหลด log...")
+                logsLoaded = 0
+                logsAllLoaded = false
+              }
               try {
                 const limit = initial ? 200 : 100
-                const res = await fetch(`/api/logs-history?skip=${logsLoaded}&limit=${limit}`)
+                const extra = filterQuery()
+                const res = await fetch(`/api/logs-history?skip=${logsLoaded}&limit=${limit}${extra ? "&" + extra : ""}`)
                 const data = await res.json()
-                if (Array.isArray(data)) {
-                  data.forEach(text => logsContainer.appendChild(makeLogEntry(text))) // ใหม่อยู่บน เก่าต่อท้ายลงล่าง
-                  logsLoaded += data.length
-                  if (data.length < limit) logsAllLoaded = true
+                const list = Array.isArray(data) ? data : (data.logs || [])
+                logsTotal = Array.isArray(data) ? logsLoaded + list.length : (data.total ?? 0)
+
+                if (initial) clearLogsState()
+                list.forEach(e => logsContainer.appendChild(makeLogEntry(e))) // ใหม่อยู่บน เก่าต่อท้ายลงล่าง
+                logsLoaded += list.length
+                if (list.length < limit) logsAllLoaded = true
+
+                if (initial && !list.length) {
+                  // log เก็บย้อนหลัง 3 วัน (persist ลง MongoDB แล้ว ไม่หายตอน restart)
+                  const jumped = !!window.__logsJumpTo
+                  const filtered = searchEl.value.trim() || fromEl.value || toEl.value
+                  setLogsState(
+                    "empty",
+                    jumped ? "ไม่พบ log ของการแจ้งเตือนนี้"
+                      : filtered ? "ไม่พบ log ตามเงื่อนไขที่เลือก"
+                      : "ยังไม่มี log",
+                    jumped || filtered
+                      ? "ระบบเก็บ log ย้อนหลังได้ 3 วัน ข้อมูลที่เก่ากว่านั้นจะถูกลบอัตโนมัติ"
+                      : ""
+                  )
                 }
+
+                // จำนวนที่พบขึ้นเฉพาะตอนค้นหาข้อความเท่านั้น
+                // (กรองตามช่วงวันที่ไม่ต้องขึ้น เพราะผู้ใช้เห็นช่วงที่เลือกอยู่แล้ว)
+                const searching = searchEl.value.trim() !== ""
+                countEl.textContent = !searching ? ""
+                  : logsTotal ? `พบ ${logsTotal.toLocaleString()} รายการ` : "ไม่พบรายการ"
+                if (initial) jumpToTargetLog()   // ล้าง __logsJumpTo ทิ้ง ต้องเรียกหลังเช็คสถานะว่างแล้ว
               } catch (err) {
                 console.error("โหลด log ล้มเหลว", err)
+                if (initial) setLogsState("error", "โหลด log ไม่สำเร็จ", "ลองรีเฟรชหน้าอีกครั้ง")
               } finally {
                 logsLoading = false
               }
+            }
+
+            // มาจากการกดการแจ้งเตือน → เลื่อนไปหา log ที่ใกล้เวลานั้นที่สุดแล้วไฮไลต์
+            function jumpToTargetLog() {
+              const target = window.__logsJumpTo
+              if (!target) return
+              window.__logsJumpTo = null
+
+              const want = new Date(target).getTime()
+              let best = null
+              let bestDiff = Infinity
+              logsContainer.querySelectorAll(".log-entry[data-ts]").forEach(el => {
+                const diff = Math.abs(new Date(el.dataset.ts).getTime() - want)
+                if (diff < bestDiff) { bestDiff = diff; best = el }
+              })
+              if (!best) return
+              best.classList.add("log-highlight")
+              best.scrollIntoView({ block: "center", behavior: "smooth" })
+              setTimeout(() => best.classList.remove("log-highlight"), 4000)
+            }
+
+            // พิมพ์ค้นหาแล้วรอ 300ms ค่อยยิง (กันยิงถี่)
+            let searchTimer
+            searchEl.addEventListener("input", () => {
+              clearTimeout(searchTimer)
+              searchTimer = setTimeout(() => loadLogsHistory(true), 300)
+            })
+            // datetime-local ต้องเป็นเวลาท้องถิ่นรูปแบบ YYYY-MM-DDTHH:mm
+            const toLocalInput = (d) => {
+              const pad = n => String(n).padStart(2, "0")
+              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+                     `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+            }
+
+            // กรองด่วน — ย้อนหลัง N วันจนถึงตอนนี้
+            quickEl?.addEventListener("change", () => {
+              const days = Number(quickEl.value)
+              if (!days) {
+                fromEl.value = ""; toEl.value = ""
+              } else {
+                const now = new Date()
+                fromEl.value = toLocalInput(new Date(now.getTime() - days * 86400000))
+                toEl.value = toLocalInput(now)
+              }
+              loadLogsHistory(true)
+            })
+
+            // แก้ช่วงเวลาเองแล้ว ตัวเลือกกรองด่วนไม่ควรค้างค่าเดิมไว้
+            const resetQuick = () => { if (quickEl) quickEl.value = "" }
+            fromEl.addEventListener("change", () => { resetQuick(); loadLogsHistory(true) })
+            toEl.addEventListener("change", () => { resetQuick(); loadLogsHistory(true) })
+            clearEl.addEventListener("click", () => {
+              searchEl.value = ""; fromEl.value = ""; toEl.value = ""
+              resetQuick()
+              loadLogsHistory(true)
+            })
+
+            // ถ้ามาจากการแจ้งเตือน ให้ตั้งช่วงเวลาเป็นวันนั้นไว้ก่อน
+            if (window.__logsJumpTo) {
+              const d = new Date(window.__logsJumpTo)
+              const pad = n => String(n).padStart(2, "0")
+              const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+              fromEl.value = `${day}T00:00`
+              toEl.value = `${day}T23:59`
             }
 
             loadLogsHistory(true)
@@ -238,10 +473,12 @@
             // log ใหม่แบบเรียลไทม์ → แทรกบนสุด
             const eventSource = new EventSource("/api/logs")
             eventSource.onmessage = (event) => {
-              if (event.data) {
-                logsContainer.insertBefore(makeLogEntry(event.data), logsContainer.firstChild)
-                logsLoaded++ // log ใหม่ดันประวัติลง 1 → ปรับ skip ให้ตรง
-              }
+              if (!event.data) return
+              let entry
+              try { entry = JSON.parse(event.data) } catch { entry = event.data }
+              clearLogsState()   // มี log ใหม่แล้ว ข้อความ "ไม่พบ log" ต้องหายไป
+              logsContainer.insertBefore(makeLogEntry(entry), logsContainer.firstChild)
+              logsLoaded++ // log ใหม่ดันประวัติลง 1 → ปรับ skip ให้ตรง
             }
             eventSource.onerror = () => {
               logsContainer.insertBefore(
@@ -260,6 +497,165 @@
     function navigateTo(e, p) { loadPage(e, p) }
 
     // ===== เมนูผู้ใช้ (มุมล่าง sidebar) =====
+    // ===== ปุ่มย้อนกลับของเบราว์เซอร์ =====
+    // เว็บนี้เป็น SPA (เปลี่ยนหน้าด้วย fetch) ถ้าไม่จัดการเอง กดย้อนกลับ = ออกจากเว็บทันที
+    // หลักการ: เปลี่ยนเมนู = 1 entry, เปิด modal = 1 entry
+    //   ย้อนกลับตอนเปิด modal → ปิด modal (ถามก่อนถ้ามีข้อมูลค้าง)
+    //   ย้อนกลับตอนไม่มี modal → ถอยไปเมนูก่อนหน้า จนหมดแล้วค่อยออกจากเว็บ
+    const MODAL_SEL = ".modal, .perm-modal, .addShop-modal, .editShop-modal, .bank-modal, .shopSetbot-modal"
+
+    function visibleModals() {
+      return [...document.querySelectorAll(MODAL_SEL)].filter(m =>
+        !m.hidden && getComputedStyle(m).display !== "none"
+      )
+    }
+
+    let modalEntryPushed = false   // มี history entry ของ modal ค้างอยู่ไหม
+    let skipNextPop = false        // popstate ที่เกิดจาก history.back() ของเราเอง
+    let suppressModalSync = false  // กันไม่ให้ observer ทำงานตอนเราปิด modal เอง
+    let modalSnapshot = null       // ค่าฟอร์มตอนเปิด ใช้เทียบว่ามีการแก้ไหม
+
+    function snapshotOf(modal) {
+      return [...modal.querySelectorAll("input, select, textarea")]
+        .map(el => (el.type === "checkbox" || el.type === "radio") ? String(el.checked) : el.value)
+        .join("")
+    }
+
+    // ปิด modal ผ่านปุ่มปิดของมันเอง เพื่อให้ logic เดิมของแอปทำงานครบ
+    function closeModalEl(modal) {
+      const btn = modal.querySelector(".modal-close, .perm-modal-close")
+      if (btn) { btn.click(); return }
+      if (modal.hasAttribute("hidden")) modal.hidden = true
+      else modal.style.display = "none"
+    }
+
+    function saveButtonOf(modal) {
+      return modal.querySelector(
+        ".btn-line-save, .perm-modal-save, .btn-shop-save, .perm-save-btn, .btn-save"
+      )
+    }
+
+    // กล่องถาม 2 ตัวเลือกตอนย้อนกลับขณะมีข้อมูลที่ยังไม่บันทึก
+    function askUnsavedModal() {
+      return new Promise(resolve => {
+        const box = document.createElement("div")
+        box.className = "perm-modal"
+        const inner = document.createElement("div")
+        inner.className = "perm-modal-box"
+
+        const head = document.createElement("div")
+        head.className = "perm-modal-head"
+        const h3 = document.createElement("h3")
+        h3.textContent = "ยังไม่ได้บันทึก"
+        head.appendChild(h3)
+
+        const p = document.createElement("p")
+        p.className = "perm-unsaved-text"
+        p.textContent = "ข้อมูลในหน้าต่างนี้ยังไม่ได้บันทึก จะทำการบันทึกไหม?"
+
+        const actions = document.createElement("div")
+        actions.className = "perm-unsaved-actions"
+        const save = document.createElement("button")
+        save.className = "perm-modal-save"
+        save.dataset.act = "save"
+        save.textContent = "บันทึก"
+        const leave = document.createElement("button")
+        leave.className = "perm-unsaved-leave"
+        leave.dataset.act = "leave"
+        leave.textContent = "ออกโดยไม่บันทึก"
+        actions.append(save, leave)
+
+        inner.append(head, p, actions)
+        box.appendChild(inner)
+        document.body.appendChild(box)
+
+        box.addEventListener("click", e => {
+          const act = e.target.closest("[data-act]")?.dataset.act
+          if (!act) return
+          box.remove()
+          resolve(act)
+        })
+      })
+    }
+
+    // เฝ้าดูว่ามี modal เปิด/ปิด เพื่อ push/กิน history entry ให้อัตโนมัติ
+    // ทำที่นี่ที่เดียว จะได้ไม่ต้องแก้ฟังก์ชันเปิด/ปิด modal ทีละตัว (มีหลายสิบจุด)
+    new MutationObserver(() => {
+      if (suppressModalSync) return
+      const open = visibleModals()
+
+      if (open.length && !modalEntryPushed) {
+        modalEntryPushed = true
+        modalSnapshot = snapshotOf(open[open.length - 1])
+        history.pushState({ kind: "modal", page: window.__currentPage }, "")
+      } else if (!open.length && modalEntryPushed) {
+        // แอปปิด modal เอง (กด X / บันทึกสำเร็จ) → กิน entry ทิ้ง
+        // เพื่อไม่ให้กดย้อนกลับแล้ววนกลับไปที่ modal ที่ปิด/บันทึกไปแล้ว
+        modalEntryPushed = false
+        modalSnapshot = null
+        skipNextPop = true
+        history.back()
+      }
+    }).observe(document.body, {
+      attributes: true, subtree: true, attributeFilter: ["style", "hidden", "class"]
+    })
+
+    window.addEventListener("popstate", async (e) => {
+      if (skipNextPop) { skipNextPop = false; return }
+
+      const open = visibleModals()
+      if (open.length) {
+        const modal = open[open.length - 1]
+        const dirty = modalSnapshot !== null && snapshotOf(modal) !== modalSnapshot
+
+        if (dirty) {
+          const choice = await askUnsavedModal()
+          if (choice === "save") {
+            // คืน entry ที่เพิ่งถอยออกมา แล้วสั่งบันทึก
+            // พอบันทึกเสร็จ modal จะปิดเอง → observer จะกิน entry ให้
+            history.pushState({ kind: "modal", page: window.__currentPage }, "")
+            modalEntryPushed = true
+            saveButtonOf(modal)?.click()
+            return
+          }
+        }
+
+        // ปิด modal โดยไม่บันทึก — entry ถูกถอยไปแล้ว ไม่ต้องถอยซ้ำ
+        suppressModalSync = true
+        modalEntryPushed = false
+        modalSnapshot = null
+        closeModalEl(modal)
+        setTimeout(() => { suppressModalSync = false }, 0)
+        return
+      }
+
+      const st = e.state
+      if (st?.kind === "page") {
+        loadPage(null, st.page, { fromPopstate: true })
+      } else if (st?.kind === "modal") {
+        // เจอ entry ของ modal ที่ปิดไปแล้ว → ข้ามไปเลย ไม่เปิดซ้ำ
+        history.back()
+      }
+    })
+
+    // ===== เมนูมือถือ =====
+    function toggleSidebar(e) {
+      if (e) e.stopPropagation()
+      const open = document.querySelector(".sidebar").classList.toggle("open")
+      document.getElementById("sidebarBackdrop").classList.toggle("show", open)
+      // ใช้ซ่อนปุ่มลอย (เช่น "เพิ่มร้านค้า") ที่จะทับ sidebar ตอนเปิดเมนู
+      document.body.classList.toggle("sidebar-open", open)
+    }
+
+    function closeSidebar() {
+      document.querySelector(".sidebar").classList.remove("open")
+      document.getElementById("sidebarBackdrop").classList.remove("show")
+      document.body.classList.remove("sidebar-open")
+    }
+
+    // กดเมนูใน sidebar แล้วปิดเอง (บนมือถือ)
+    document.querySelector(".sidebar ul")?.addEventListener("click", () => closeSidebar())
+
     function toggleUserMenu(e) {
       e.stopPropagation()
       const menu = document.getElementById("userMenu")
@@ -352,7 +748,8 @@
           : ""
 
         return `
-          <div class="noti-item ${escapeHtml(n.level)}">
+          <div class="noti-item ${escapeHtml(n.level)}" data-noti-ts="${escapeHtml(n.createdAt)}"
+               title="กดเพื่อดู log ตอนเกิดเหตุ">
             <i class="bi ${iconOf(n.level)}"></i>
             <div class="noti-item-text">
               <strong>${escapeHtml(n.title)}</strong>
@@ -363,6 +760,22 @@
           </div>`
       }).join("")
     }
+
+    // กดที่ตัวการแจ้งเตือน → ไปหน้า Logs แล้วเลื่อนไปที่เวลานั้น
+    document.getElementById("notiList")?.addEventListener("click", (e) => {
+      if (e.target.closest(".noti-count-btn")) return   // กดปุ่มเกิดซ้ำ — จัดการด้านล่าง
+      const item = e.target.closest(".noti-item[data-noti-ts]")
+      if (!item) return
+
+      const canSeeLogs = window.__me?.role === "OWNER" ||
+        (window.__me?.permissions?.sidebar || []).includes("logs")
+      if (!canSeeLogs) return   // ไม่มีสิทธิ์ดู log ก็ไม่ต้องพาไป
+
+      window.__logsJumpTo = item.dataset.notiTs
+      closeNotiPanel()
+      closeSidebar()
+      loadPage(null, "logs")
+    })
 
     // กดที่ "เกิดซ้ำ N ครั้ง" เพื่อกาง/พับรายการเวลา
     document.getElementById("notiList")?.addEventListener("click", (e) => {
@@ -433,13 +846,16 @@
     // ===== Modal เปลี่ยนรหัสผ่าน =====
     function openChangePwModal() {
       document.getElementById("userMenu").hidden = true
-      document.getElementById("currentPassword").value = ""
-      document.getElementById("newPassword").value = ""
+      // สร้างช่องรหัสผ่านตอนเปิดเท่านั้น (ดูเหตุผลที่ <template> ด้านบน)
+      const host = document.getElementById("changePwFields")
+      host.replaceChildren(document.getElementById("changePwTemplate").content.cloneNode(true))
       document.getElementById("changePwStatus").textContent = ""
       document.getElementById("changePwModal").hidden = false
     }
     function closeChangePwModal() {
       document.getElementById("changePwModal").hidden = true
+      // เอาช่องรหัสผ่านออกจาก DOM เพื่อไม่ให้เบราว์เซอร์เห็นตอนใช้งานหน้าอื่น
+      document.getElementById("changePwFields").replaceChildren()
     }
     async function submitChangePw() {
       const currentPassword = document.getElementById("currentPassword").value
@@ -523,7 +939,17 @@
           `ยังไม่ได้รับสิทธิ์เข้าถึงเมนูใดๆ<br>กรุณาติดต่อเจ้าของระบบ</p>`
         return
       }
-      loadPage(null, firstLi.dataset.page)
+      // รีเฟรชแล้วให้อยู่หน้าเดิม — เก็บหน้าล่าสุดไว้ใน sessionStorage
+      // (ยังต้องเช็คสิทธิ์ก่อน เผื่อสิทธิ์ถูกถอนไปแล้วหลังจากเปิดค้างไว้)
+      let startPage = firstLi.dataset.page
+      try {
+        const saved = sessionStorage.getItem("lastPage")
+        if (saved && document.querySelector(`.sidebar li[data-page="${saved}"]:not([hidden])`)) {
+          startPage = saved
+        }
+      } catch { /* บางเบราว์เซอร์ปิด storage ไว้ — ใช้หน้าแรกตามปกติ */ }
+
+      loadPage(null, startPage)
     }
 
     window.addEventListener("DOMContentLoaded", initApp)

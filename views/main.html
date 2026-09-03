@@ -2,6 +2,9 @@
   <div class="main-container">
     <h1 class="page-title">หน้าหลักระบบ</h1>
 
+    <!-- ตัวกรอง + รายการร้าน อยู่ในคอลัมน์เดียวกัน เพื่อให้ขอบซ้ายตรงกัน
+         (หัวข้อหน้าอยู่นอกคอลัมน์ เพราะต้องกึ่งกลางจอเสมอ) -->
+    <div class="shop-column">
     <!-- ตัวกรอง: เลือกร้านที่ต้องการแสดง -->
     <div class="shop-filter-bar">
       <div class="shop-filter">
@@ -24,6 +27,7 @@
     <div class="shop-list" id="shop-list">
       <!-- รายการร้านค้าจะถูกเติมด้วย JavaScript -->
     </div>
+    </div><!-- /.shop-column -->
 <!-- ปุ่มเพิ่มร้านค้า -->
 <div class="footer">
     <div class="button-group">
@@ -55,12 +59,12 @@
 
         <div class="input-group">
             <label>Channel ID</label>
-            <input type="text" id="newChannelID">
+            <input type="text" id="newChannelID" autocomplete="off">
         </div>
 
         <div class="input-group">
             <label>Secret Token</label>
-            <input type="text" id="newSecretToken">
+            <input type="text" id="newSecretToken" autocomplete="off">
         </div>
         <div id="alertMessageAddline" class="alert-message-Line"></div>
         <button class="btn-line-save" onclick="saveNewLine()">บันทึก</button>
@@ -81,12 +85,12 @@
 
         <div class="input-group">
             <label>Channel ID</label>
-            <input type="text" id="editChannelID">
+            <input type="text" id="editChannelID" autocomplete="off">
         </div>
 
         <div class="input-group">
             <label>Secret Token</label>
-            <input type="text" id="editSecretToken">
+            <input type="text" id="editSecretToken" autocomplete="off">
         </div>
         <div id="alertMessageEditLine" class="alert-message-Line"></div>
         <button class="btn-line-save" onclick="saveEditedLine()">บันทึก</button>
@@ -106,12 +110,12 @@
   
       <div class="input-group">
         <label>ชื่อร้าน:</label>
-        <input type="text" id="editShopName">
+        <input type="text" id="editShopName" autocomplete="off">
       </div>
   
       <div class="input-group">
         <label>Prefix:</label>
-        <input type="text" id="editShopPrefix" disabled>
+        <input type="text" id="editShopPrefix" disabled autocomplete="off">
       </div>
       <div id="alertMessageEditShop" class="alert-message-Shop"></div>
       <button class="btn-shop-save" onclick="saveShopChanges()">บันทึก</button>
@@ -128,12 +132,12 @@
 
         <div class="input-group">
             <label>ชื่อร้าน:</label>
-            <input type="text" id="shopName">
+            <input type="text" id="shopName" autocomplete="off">
         </div>
 
         <div class="input-group">
             <label>Prefix:</label>
-            <input type="text" id="shopPrefix">
+            <input type="text" id="shopPrefix" autocomplete="off">
         </div>
         <div id="alertMessageShop" class="alert-message-Shop"></div>
 
@@ -168,11 +172,11 @@
         <h2 id="lineShopNameTitle" class="lineShopNameTitle">เพิ่มบัญชีธนาคารสำหรับร้าน:</h2>
         <div class="input-group">
           <label for="bankAccountName">ชื่อบัญชี:</label>
-          <input type="text" id="bankAccountName" placeholder="กรอกชื่อบัญชี (ไม่ต้องใส่คำหน้าชื่อ)">
+          <input type="text" id="bankAccountName" placeholder="กรอกชื่อบัญชี (ไม่ต้องใส่คำหน้าชื่อ)" autocomplete="off">
         </div>
         <div class="input-group">
           <label for="bankAccountNumber">เลขบัญชี:</label>
-          <input type="text" id="bankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)">
+          <input type="text" id="bankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
         </div>
         <div id="alertMessageAddBank" class="alert-message-Bank"></div>
         <button class="btn btn-shop-save" onclick="saveNewBank()">บันทึก</button>
@@ -185,11 +189,11 @@
         <h2 id="EditBankTitle" class="EditBankTitle">แก้ไขธนาคาร</h2>
         <div class="input-group">
           <label for="editBankAccountName">ชื่อบัญชี:</label>
-          <input type="text" id="editBankAccountName" placeholder="กรอกชื่อบัญชี">
+          <input type="text" id="editBankAccountName" placeholder="กรอกชื่อบัญชี" autocomplete="off">
         </div>
         <div class="input-group">
           <label for="editBankAccountNumber">เลขบัญชี:</label>
-          <input type="text" id="editBankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)">
+          <input type="text" id="editBankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
         </div>
         <div id="alertMessageEditBank" class="alert-message-Bank"></div>
         <button class="btn btn-shop-save" onclick="saveEditedBank()">บันทึก</button>

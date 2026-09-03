@@ -11,6 +11,170 @@
   overflow: hidden;
 }
 
+/* ===== แถบค้นหา + ช่วงวันที่ ===== */
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.logs-search {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 340px;
+}
+
+/* ตรึงกลุ่มตัวกรองไว้ขวาสุด — ไม่งั้นพอ "พบ N รายการ" โผล่/หายตอนพิมพ์ค้นหา
+   ช่องวันที่จะขยับไปมา กดพลาดได้ */
+.logs-range {
+  margin-left: auto;
+}
+
+.logs-search i {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.logs-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px 9px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.logs-search input:focus { border-color: var(--blue); }
+
+/* กรองด่วน (1 วัน / 3 วัน / 7 วัน / 1 เดือน) */
+.logs-quick {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.logs-quick > i {
+  position: absolute;
+  left: 11px;
+  color: var(--text-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.logs-quick select {
+  appearance: none;
+  padding: 8px 30px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  /* ลูกศรวาดด้วย gradient — ไม่ต้องพึ่งไฟล์ภาพภายนอก */
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.logs-quick select:hover,
+.logs-quick select:focus { border-color: var(--blue); }
+
+.logs-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logs-range label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.logs-range input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.logs-range input:focus { border-color: var(--blue); }
+
+.logs-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.logs-clear-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.logs-count {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ว่างเมื่อไม่ได้ค้นหาข้อความ — ต้องซ่อน ไม่งั้นบนมือถือจะกินพื้นที่เป็นแถวเปล่า
+   (mobile.css ตั้ง flex: 1 1 100% ไว้) */
+.logs-count:empty {
+  display: none;
+}
+
+/* log ที่ถูกเด้งมาจากการแจ้งเตือน */
+.log-entry.log-highlight {
+  background: rgba(245, 158, 11, 0.18);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-sm);
+  animation: log-flash 1s ease-in-out 2;
+}
+
+@keyframes log-flash {
+  50% { background: rgba(245, 158, 11, 0.35); }
+}
+
 .logs-container {
   display: flex;
   flex-direction: column;
@@ -58,10 +222,47 @@
   font-family: 'Consolas', 'JetBrains Mono', monospace;
   display: flex;
   align-items: flex-start;
+  gap: 12px;
   word-break: break-word;
   color: var(--text);
   transition: background 0.1s;
   line-height: 1.5;
+}
+
+/* ป้ายเวลา — แยกออกจากข้อความ อ่านง่ายและเรียงตรงกันทุกบรรทัด */
+.log-time {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;   /* ตัวเลขกว้างเท่ากัน คอลัมน์จึงตรง */
+  letter-spacing: 0.2px;
+}
+
+/* วันที่จะโผล่เฉพาะ log ที่ไม่ใช่ของวันนี้ */
+.log-date {
+  color: var(--blue-dark);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.log-msg {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Noto Sans Thai', 'Inter', sans-serif;
+}
+
+.log-entry.error .log-time {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--red);
 }
 
 .log-entry:hover {
@@ -75,4 +276,51 @@
 .log-entry.error {
   color: var(--red-dark);
   background: var(--red-muted);
+}
+
+/* ===== สถานะกลางกล่อง log (กำลังโหลด / ไม่พบ / ผิดพลาด) ===== */
+.logs-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.logs-state i {
+  font-size: 30px;
+  opacity: 0.5;
+}
+
+.logs-state.error {
+  color: var(--red);
+}
+
+.logs-state-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.logs-state-hint {
+  max-width: 420px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+
+.logs-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: logs-spin 0.7s linear infinite;
+}
+
+@keyframes logs-spin {
+  to { transform: rotate(360deg); }
 }

@@ -25,6 +25,7 @@ import PrefixForshop from "./models/Prefix.js";
 import moment from "moment-timezone";
 import { connectDB } from "./mongo.js";
 import Shop from "./models/Shop.js";
+import LogModel from "./models/Log.js";
 import { checkAndSavePhoneNumber, checkAndUpdatePhoneNumber } from "./utils/savePhoneNumber.js";
 import { createHealingClient, startTokenRefreshScheduler, markLineTokenError, clearLineTokenError } from "./utils/lineToken.js";
 import { addNotification, listNotifications, unreadCount, markAllRead, clearNotifications, loadNotificationsFromDB, onNotification } from "./utils/notificationStore.js";
@@ -47,9 +48,74 @@ const baseURL = process.env.URL || `http://localhost:${PORT}`;
 
 const app = express();
 const clients = [];
-const MAX_LOGS = 1000; // เก็บ log ในหน่วยความจำมากขึ้น เพื่อให้เลื่อนดู log เก่าได้
+// เก็บ log ย้อนหลังได้สูงสุด 3 วัน — เกินกว่านั้นลบทิ้ง
+// MAX_LOGS เป็นเพดานกันหน่วยความจำบานเท่านั้น (ปกติ 3 วันจะไม่ถึง)
+const LOG_RETENTION_DAYS = 3;
+const LOG_RETENTION_MS = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const MAX_LOGS = 20000;
 const logHistory = [];
 const logClients = [];
+
+// เก็บ log ลง MongoDB ด้วย เพื่อไม่ให้หายตอน server restart
+// เขียนเป็นชุด (buffer) แทนที่จะยิงทีละบรรทัด — บอทยิง log ถี่มาก
+const logWriteBuffer = [];
+let logFlushTimer = null;
+
+async function flushLogBuffer() {
+  logFlushTimer = null;
+  if (!logWriteBuffer.length) return;
+  const batch = logWriteBuffer.splice(0, logWriteBuffer.length);
+  try {
+    await LogModel.insertMany(batch, { ordered: false });
+  } catch (err) {
+    // MongoDB ล่มก็ไม่ควรทำให้บอททำงานต่อไม่ได้ — log ยังอยู่ใน memory เหมือนเดิม
+    console.error("บันทึก log ลง MongoDB ไม่สำเร็จ:", err.message);
+  }
+}
+
+function queueLogWrite(entry) {
+  logWriteBuffer.push({ ts: new Date(entry.ts), text: entry.text });
+  if (logWriteBuffer.length >= 50) return void flushLogBuffer();
+  if (!logFlushTimer) {
+    logFlushTimer = setTimeout(flushLogBuffer, 2000);
+    logFlushTimer.unref?.();   // timer นี้ไม่ควรกันโปรเซสปิด
+  }
+}
+
+// กู้ log เดิมกลับเข้า memory ตอน start (เรียกหลัง connectDB)
+export async function loadLogsFromDB() {
+  try {
+    const cutoff = new Date(Date.now() - LOG_RETENTION_MS);
+    // เอา "ใหม่สุด" มาก่อนแล้วค่อยกลับลำดับ — ถ้า sort ขึ้นแล้ว limit จะได้ของเก่าสุดมาแทน
+    const rows = await LogModel.find({ ts: { $gte: cutoff } })
+      .sort({ ts: -1 })
+      .limit(MAX_LOGS)
+      .lean();
+    rows.reverse();
+
+    // log ที่เกิดก่อน connectDB (เช่น "Server started") ต้องอยู่ท้ายสุดตามเวลาจริง
+    // ใช้ลูปแทน unshift(...rows) เพราะ spread หลักหมื่นตัวทำ stack overflow ได้
+    const startupEntries = logHistory.splice(0, logHistory.length);
+    for (const r of rows) logHistory.push({ ts: new Date(r.ts).toISOString(), text: r.text });
+    for (const e of startupEntries) logHistory.push(e);
+    pruneLogHistory();
+    console.log(`📜 กู้ log เดิมกลับมา ${rows.length} รายการ`);
+  } catch (err) {
+    console.error("โหลด log เดิมจาก MongoDB ไม่สำเร็จ:", err.message);
+  }
+}
+
+// ตัด log ที่เก่าเกิน 3 วันออก (logHistory เรียงเก่า→ใหม่ จึงตัดจากหัวได้เลย)
+function pruneLogHistory() {
+  const cutoff = Date.now() - LOG_RETENTION_MS;
+  let drop = 0;
+  while (drop < logHistory.length && new Date(logHistory[drop].ts).getTime() < cutoff) drop++;
+  if (drop) logHistory.splice(0, drop);
+  if (logHistory.length > MAX_LOGS) logHistory.splice(0, logHistory.length - MAX_LOGS);
+}
+
+// เผื่อช่วงที่ไม่มี log ใหม่เข้ามาเลย ของเก่าจะได้ถูกลบตามเวลาด้วย
+setInterval(pruneLogHistory, 60 * 60 * 1000).unref?.();
 
 // ตั้ง session ไว้ก่อนเสมอ
 // เก็บ session ใน MongoDB → ไม่หลุด login เมื่อ server restart (nodemon ตอน dev)
@@ -210,11 +276,28 @@ let shopData = [];
 // ╚══════════════════════════════════════════════════════════════╝
 
 // ประวัติ log แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
+// ประวัติ log — รองรับค้นหา (q) และช่วงวันที่-เวลา (from/to เป็น ISO string)
+// กรองที่เซิร์ฟเวอร์ก่อนแบ่งหน้า ไม่งั้น skip/limit จะเพี้ยนเมื่อมีตัวกรอง
 app.get("/api/logs-history", (req, res) => {
   const skip = Math.max(0, parseInt(req.query.skip) || 0);
   const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 200));
-  const newestFirst = logHistory.slice().reverse(); // logHistory เก็บเก่า→ใหม่ จึง reverse เป็นใหม่→เก่า
-  res.json(newestFirst.slice(skip, skip + limit));
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const from = req.query.from ? new Date(req.query.from).getTime() : null;
+  const to = req.query.to ? new Date(req.query.to).getTime() : null;
+
+  let list = logHistory.slice().reverse(); // เก็บเก่า→ใหม่ จึง reverse เป็นใหม่→เก่า
+
+  if (from || to) {
+    list = list.filter(e => {
+      const t = new Date(e.ts).getTime();
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    });
+  }
+  if (q) list = list.filter(e => e.text.toLowerCase().includes(q));
+
+  res.json({ total: list.length, logs: list.slice(skip, skip + limit) });
 });
 
 // Endpoint สำหรับสตรีม log "ใหม่" แบบเรียลไทม์ (ประวัติเก่าโหลดผ่าน /api/logs-history)
@@ -1958,23 +2041,25 @@ app.post("/api/upload-send-image-line", uploadsendimage.single("image"), async (
 
 // ฟังก์ชันสำหรับส่ง Logs ไปยัง Clients
 export function broadcastLog(message) {
-  const timestamp = new Date().toLocaleTimeString("th-TH", {
+  const now = new Date();
+  const timestamp = now.toLocaleTimeString("th-TH", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Bangkok"
   });
 
-  const logEntry = `[ ${timestamp} ] ${message}`;
+  // เก็บเวลาเต็มไว้ด้วย (ts) เพื่อให้หน้า Logs กรองตามช่วงวันที่-เวลาได้
+  // ข้อความที่แสดงยังเป็นรูปแบบเดิม `[ HH:mm ] ...`
+  const entry = { ts: now.toISOString(), text: `[ ${timestamp} ] ${message}` };
 
   // เก็บ log ลงในประวัติ
-  logHistory.push(logEntry);
-  if (logHistory.length > MAX_LOGS) {
-    logHistory.splice(0, logHistory.length - MAX_LOGS);
-  }
+  logHistory.push(entry);
+  pruneLogHistory();
+  queueLogWrite(entry);
 
-  // ส่ง log ไปยัง clients แบบ real-time
-  const data = `data: ${logEntry}\n\n`;
+  // ส่ง log ไปยัง clients แบบ real-time (JSON เพื่อให้มี ts ไปด้วย)
+  const data = `data: ${JSON.stringify(entry)}\n\n`;
   logClients.forEach(client => {
     try {
       client.write(data);
@@ -2031,6 +2116,7 @@ app.listen(PORT, async () => {
     await loadBankAccounts();
     await setupWebhooks();
     await loadNotificationsFromDB(); // กู้การแจ้งเตือนเดิมกลับเข้า memory
+    await loadLogsFromDB();          // กู้ log เดิมกลับเข้า memory (ไม่หายเมื่อ restart)
     startSlip2goMonitor(); // เริ่มมอนิเตอร์โควต้า Slip2Go + แจ้งเตือน Telegram
     startTokenRefreshScheduler(); // auto-refresh LINE token ทุก 4 วัน + catch-up ตอน start
     console.log("All services initialized");

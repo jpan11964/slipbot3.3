@@ -1,6 +1,41 @@
 <div class="logs-page">
   <h1 class="page-title">LOG การใช้งาน</h1>
 
+  <div class="logs-toolbar">
+    <div class="logs-search">
+      <i class="bi bi-search"></i>
+      <input type="text" id="logsSearch" placeholder="ค้นหาข้อความใน log" autocomplete="off">
+    </div>
+
+    <!-- จำนวนที่พบ อยู่ติดช่องค้นหา เพราะขึ้นเฉพาะตอนค้นหาข้อความ -->
+    <div class="logs-count" id="logsCount"></div>
+
+    <div class="logs-range">
+      <!-- ล้างอยู่หน้าสุดของกลุ่ม กลุ่มยังตรึงชิดขวาเหมือนเดิม -->
+      <button type="button" class="logs-clear-btn" id="logsClear" title="ล้างตัวกรอง">
+        <i class="bi bi-x-circle"></i> ล้าง
+      </button>
+
+      <label>ตั้งแต่
+        <input type="datetime-local" id="logsFrom" autocomplete="off">
+      </label>
+      <label>ถึง
+        <input type="datetime-local" id="logsTo" autocomplete="off">
+      </label>
+
+      <!-- กรองด่วน: ย้อนหลัง N วันจนถึงตอนนี้ -->
+      <div class="logs-quick">
+        <i class="bi bi-clock-history"></i>
+        <select id="logsQuick">
+          <option value="">ทั้งหมด</option>
+          <option value="1">1 วันล่าสุด</option>
+          <option value="3">3 วันล่าสุด</option>
+        </select>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ✅ ห่ออีกชั้นเพื่อจัดการ scrollbar สวย ๆ -->
   <div class="logs-wrapper-outer">
     <div class="logs-wrapper">

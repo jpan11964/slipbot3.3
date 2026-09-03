@@ -1,0 +1,397 @@
+/* mobile.css — ปรับ layout สำหรับจอมือถือ/แท็บเล็ต
+   โหลดเป็นไฟล์ CSS สุดท้ายใน index.html เพื่อ override ไฟล์อื่นได้ตาม source order
+   (ไม่ต้องใช้ !important) — เพิ่ม responsive ที่นี่ที่เดียว ไม่ต้องแก้ไฟล์เดิม */
+
+/* ซ่อนของเฉพาะมือถือไว้ก่อนบนจอใหญ่ */
+.mobile-topbar,
+.sidebar-backdrop {
+  display: none;
+}
+
+/* ---------- ความสูงที่มองเห็นจริง (ทุกขนาดจอ) ----------
+   100vh บนมือถือ "รวม" พื้นที่ใต้แถบเบราว์เซอร์ด้วย ทำให้ sidebar สูงเกินจอ
+   แถบชื่อผู้ใช้ที่อยู่ล่างสุดเลยตกขอบ ต้องเลื่อนลงถึงจะเห็น
+   (เจอชัดตอนเปิดมือถือแล้วสั่ง "ขอเว็บไซต์เดสก์ท็อป" — media query ไม่ทำงานเพราะจอกว้าง)
+   100dvh หักแถบเบราว์เซอร์ออกให้ — บนเดสก์ท็อปค่าเท่ากับ 100vh ทุกประการ
+   เบราว์เซอร์เก่าที่ไม่รู้จัก dvh จะข้ามบรรทัดนี้แล้วใช้ 100vh จาก shared.css ต่อ */
+.sidebar {
+  height: 100dvh;
+}
+
+.content {
+  height: 100dvh;
+}
+
+@media (max-width: 768px) {
+
+  /* ---------- แถบบนพร้อมปุ่มเมนู ---------- */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 54px;
+    padding: 0 14px;
+    background: var(--navy);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 1100;
+  }
+
+  .mobile-menu-btn {
+    background: none;
+    border: none;
+    color: #e2e8f0;
+    font-size: 24px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+
+  .mobile-menu-btn:active { background: rgba(255, 255, 255, 0.1); }
+
+  .mobile-topbar .mobile-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f1f5f9;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .mobile-topbar .mobile-title i { color: var(--blue); }
+
+  /* ---------- Sidebar เลื่อนเข้า-ออก ---------- */
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 1200;
+    width: 268px;
+  }
+
+  .sidebar.open { transform: translateX(0); }
+
+  /* ฉากหลังทึบตอนเปิดเมนู — แตะเพื่อปิด */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1150;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s;
+  }
+
+  .sidebar-backdrop.show {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* ---------- เนื้อหาเต็มความกว้าง ---------- */
+  .content {
+    margin-left: 0;
+    padding: 68px 14px 16px;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  /* ทุก container ระดับหน้า — เดิมตรึง left: 260px ไว้ตายตัว */
+  .dashboard-page,
+  .logs-page,
+  .send-message-page,
+  .customers-page,
+  .permissions-page,
+  .prefixes-page,
+  .main-page .main-container {
+    left: 0;
+    right: 0;
+    top: 54px;
+    bottom: 0;
+    padding: 14px 12px;
+  }
+
+  /* ---------- ตัวอักษร/หัวข้อ ---------- */
+  .page-title,
+  h1 {
+    font-size: 21px;
+    line-height: 1.35;
+  }
+
+  h2 { font-size: 17px; }
+
+  /* ---------- แถบค้นหา/ช่วงวันที่ ในหน้า Logs ---------- */
+  .logs-search { max-width: none; flex: 1 1 100%; }
+
+  .logs-quick { flex: 1 1 100%; }
+
+  .logs-quick select { width: 100%; box-sizing: border-box; }
+
+  .logs-range { flex: 1 1 100%; }
+
+  .logs-range label { flex: 1 1 calc(50% - 4px); }
+
+  .logs-range input { width: 100%; box-sizing: border-box; }
+
+  .logs-clear-btn { flex: 1 1 100%; justify-content: center; }
+
+  .logs-count { margin-left: 0; flex: 1 1 100%; }
+
+  /* ---------- ตารางที่กว้างเกินจอ → เลื่อนแนวนอนได้ ---------- */
+  .dashboard-container,
+  .dashboard-head,
+  .customers-container,
+  .permissions-container,
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ---------- Modal ----------
+     ปัญหาเดิมบนมือถือ: wrapper ใช้ align-items:center + ไม่มี overflow
+     พอเนื้อหาสูงกว่าจอ ส่วนบน (รวมปุ่ม X) จะล้นขึ้นไปเหนือจอแบบเลื่อนตามไม่ได้ → ค้าง
+     แก้: ให้ wrapper เลื่อนได้ + เริ่มจัดจากด้านบน + ยก z-index ให้พ้น topbar */
+  .main-page .modal,
+  .main-page .addShop-modal,
+  .main-page .editShop-modal,
+  .main-page .bank-modal,
+  .main-page .shopSetbot-modal,
+  .perm-modal {
+    z-index: 1300;            /* topbar=1100, sidebar=1200 */
+    align-items: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 18px 12px;       /* บน/ล่างเท่ากันเพื่อให้กล่องอยู่กึ่งกลางพอดี
+                                 และต้องมีแนวนอน ไม่งั้นกล่องชนขอบจอ */
+  }
+
+  .modal-content,
+  .showLine-modal-content,
+  .bank-modal-content,
+  .Line-modal-content,
+  .addShop-modal-content,
+  .editShop-modal-content,
+  .edit-bank-modal-content,
+  .add-bank-modal-content,
+  .shopSetbot-modal-content {
+    width: auto;
+    max-width: 94vw;
+    max-height: none;   /* ให้ wrapper เป็นตัวเลื่อนแทน ปุ่ม X จะเลื่อนถึงเสมอ */
+    margin: auto;
+    padding: 22px 18px;
+  }
+
+  /* กล่อง modal ของหน้าจัดการสิทธิ์ (สร้าง/แก้ไขบัญชี) — เดิมไม่ได้อยู่ในรายการนี้
+     เลยกว้างชนขอบจอและมองไม่เห็นมุมโค้ง ทำให้หน้าตาไม่เหมือน modal อื่น */
+  .perm-modal-box {
+    width: 100%;
+    max-width: 94vw;
+    margin: auto;   /* กึ่งกลางเมื่อเนื้อหาไม่สูงเกินจอ / ชิดบนเมื่อสูงเกิน */
+    padding: 22px 18px 24px;
+  }
+
+  /* ปุ่มปิดต้องกดโดนง่ายบนจอสัมผัส */
+  .modal-close,
+  .perm-modal-close {
+    font-size: 26px;
+    padding: 6px 10px;
+  }
+
+  /* ---------- หน้าต่างการแจ้งเตือน ----------
+     ปุ่มกระดิ่งอยู่ใน sidebar (z-index 1200) ถ้าไม่ยก z-index หน้าต่างจะโดน sidebar ทับ */
+  .noti-panel {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: 70vh;
+    z-index: 1250;
+  }
+
+  /* ---------- การ์ดร้านบนมือถือ ----------
+     ปุ่ม "แก้ไข / ลบร้านค้า" ล้นเป็นบรรทัดที่สองจนการ์ดสูงเกินจำเป็น
+     → ย้ายเข้าเมนู Kebab มุมขวาบนของการ์ด (วาดไว้ใน HTML อยู่แล้ว แค่สลับการแสดงผล) */
+  .main-page .shop-row-menu {
+    display: block;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  .main-page .shop-item .btn-edit,
+  .main-page .shop-item .btn-delete {
+    display: none;
+  }
+
+  /* เว้นที่ให้ปุ่ม Kebab ไม่ให้ทับชื่อร้าน */
+  .main-page .shop-item .shop-info {
+    padding-right: 34px;
+  }
+
+  /* กลุ่มปุ่มขึ้นบรรทัดใหม่เต็มความกว้างแล้วจัดกึ่งกลาง
+     เดิมชิดซ้ายจนเหลือที่ว่างข้างขวาข้างเดียว ดูไม่สมดุล */
+  .main-page .shop-item .buttons {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* เมนูต้องลอยเหนือการ์ดใบถัดไป */
+  .main-page .shop-row-menu .row-menu-list {
+    z-index: 20;
+  }
+
+  /* ---------- หน้าตั้งค่าระบบสลิป ----------
+     ปุ่มสองปุ่มกว้างไม่เท่ากัน ("บันทึกการตั้งค่า" ยาวกว่า "คืนค่าเริ่มต้น")
+     พอวางคู่กันบนจอแคบจะดูไม่สมดุล → บังคับให้กว้างเท่ากัน */
+  .settings-actions .save-btn,
+  .settings-actions .reset-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 12px 10px;
+    box-sizing: border-box;   /* ไม่งั้นเส้นขอบของปุ่มคืนค่าทำให้กว้างเกินไป 3px */
+  }
+
+  /* ---------- หน้าจัดการ Prefix ----------
+     .prefix-grid เดิมเป็น flex-wrap ที่ชิปกว้างตามตัวอักษร (SF สั้น MMA ยาว)
+     แต่ละแถวจึงยาวไม่เท่ากัน ขอบขวาหลุดเป็นฟันปลา
+     → grid คอลัมน์เท่ากัน ทุกชิปกว้างเท่ากัน เรียงเป็นตารางสมดุล */
+  .prefix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+  }
+
+  .prefix-chip {
+    justify-content: center;   /* ข้อความ + ปุ่มลบ อยู่กลางชิป */
+    gap: 8px;
+    padding: 9px 12px;
+    min-width: 0;
+  }
+
+  .prefix-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* หน้าจัดการสิทธิ์: เดสก์ท็อปเว้น 170px เผื่อปุ่มลอย — จอแคบไม่ต้อง */
+  .permissions-head {
+    padding: 0;
+  }
+
+  /* ปุ่ม "สร้างบัญชีใหม่" ลอยมุมขวาบนบนเดสก์ท็อป — บนจอแคบจะทับหัวข้อที่อยู่กึ่งกลาง
+     จึงคืนให้อยู่ในสายเนื้อหา แล้วจัดกึ่งกลางใต้คำโปรย */
+  .permissions-head > .perm-create-btn {
+    position: static;
+    display: flex;
+    justify-content: center;
+    margin: 0 auto 16px;
+  }
+
+  /* ---------- หน้าจัดการสิทธิ์ ----------
+     หัวการ์ดเป็น flex แนวนอน พอชื่อผู้ใช้ยาวจะดันปุ่มบันทึกหลุดออกนอกกรอบ
+     → ให้ขึ้นบรรทัดใหม่ ชื่อยาวเกินก็ตัดด้วย ... และปุ่มบันทึกเต็มความกว้าง */
+  .perm-card-head {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .perm-user {
+    flex: 1 1 100%;
+    min-width: 0;   /* จำเป็น ไม่งั้น flex item จะไม่ยอมหดต่ำกว่าความกว้างเนื้อหา */
+  }
+
+  .perm-username {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .perm-save-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ตัวเลือกสิทธิ์: เดิมเป็น flex-wrap ที่ chip กว้างตามข้อความ
+     ทำให้แต่ละแถวมีจำนวนไม่เท่ากัน ดูไม่สมดุลและกินพื้นที่แนวตั้ง
+     → เปลี่ยนเป็น grid 2 คอลัมน์เท่ากัน จัดเรียงเป็นตารางสวยงาม */
+  .perm-checks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .perm-check {
+    display: flex;
+    min-width: 0;          /* ให้ช่องหดได้ ไม่ดันคอลัมน์ */
+    padding: 9px 11px;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  .perm-check span {
+    min-width: 0;
+    overflow-wrap: anywhere;   /* ข้อความยาวตัดบรรทัดในช่อง ไม่ล้นออก */
+  }
+
+  .perm-check input { flex-shrink: 0; }
+
+  /* แผงย่อยลด padding ลง เพื่อไม่ให้เนื้อหาถูกบีบ */
+  .perm-setbot-panel,
+  .perm-shopbtn-panel {
+    padding: 10px;
+  }
+
+  /* toast ผลการบันทึกย้ายไปอยู่ใน permissions.css แล้ว (ใช้ทั้งเดสก์ท็อปและมือถือ)
+     ที่นี่ปรับแค่ให้พอดีจอเล็ก */
+  .perm-status:not(:empty) {
+    bottom: 22px;
+    font-size: 13.5px;
+    padding: 11px 22px;
+  }
+
+  /* แถวร้านบนเดสก์ท็อปล็อกช่องชื่อไว้ 250px เพื่อให้ปุ่มของทุกแถวตรงกัน
+     บนจอแคบไม่ต้องล็อก ปุ่มขึ้นบรรทัดใหม่อยู่แล้ว — ปล่อยให้ชื่อหดได้เต็มที่ */
+  .main-page .shop-item .shop-info {
+    min-width: 0;
+  }
+
+  /* ---------- ปุ่มลอย "เพิ่มร้านค้า" ----------
+     เดิม: left: calc(260px + ((100% - 260px) / 2)) = กึ่งกลางพื้นที่เนื้อหาหลังหัก sidebar
+     บนมือถือ sidebar ซ่อนอยู่ สูตรนี้เลยดันปุ่มไปทางขวาจนตกขอบ → ใช้กึ่งกลางเต็มจอแทน */
+  .main-page .btn-add-shop {
+    left: 50%;
+    bottom: 18px;
+    font-size: 13.5px;
+    padding: 12px 24px;
+    white-space: nowrap;
+  }
+
+  /* เปิดเมนูอยู่ → ซ่อนปุ่ม ไม่งั้นมันลอยทับแถบชื่อผู้ใช้ใน sidebar
+     (ปุ่มนี้อยู่ในหน้าหลักเท่านั้น จึงกลับมาเฉพาะตอนอยู่หน้าหลักอยู่แล้ว)
+     ใช้ display แทน opacity/visibility เพราะเป็น property ที่ไม่มีอะไรมา override
+     และไม่ทิ้งปุ่มที่มองไม่เห็นค้างไว้ให้กดโดนพลาด */
+  body.sidebar-open .main-page .btn-add-shop {
+    display: none;
+  }
+}
+
+/* จอเล็กมาก (มือถือแนวตั้งทั่วไป) */
+@media (max-width: 480px) {
+  .content { padding: 64px 10px 14px; }
+
+  .dashboard-page,
+  .logs-page,
+  .send-message-page,
+  .customers-page,
+  .permissions-page,
+  .prefixes-page,
+  .main-page .main-container {
+    padding: 12px 10px;
+  }
+
+  .page-title, h1 { font-size: 19px; }
+}

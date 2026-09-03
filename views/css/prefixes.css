@@ -15,6 +15,7 @@
 }
 
 .prefixes-subtitle {
+  text-align: center;   /* ตามหัวข้อที่ย้ายมากึ่งกลาง */
   margin: -8px 0 22px;
   font-size: 13.5px;
   color: var(--text-muted);

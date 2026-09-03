@@ -30,17 +30,55 @@ async function loadShops() {
 // สร้าง HTML ของรายการไลน์ 1 บรรทัด — ใช้ร่วมกันทุกที่ที่วาดรายการไลน์
 // (เดิมโค้ดนี้ซ้ำ 3 ที่ ทำให้เครื่องหมาย "ไลน์หลุด" หายไปในบางหน้าจอ)
 // ไลน์ที่ tokenError = true จะมีเครื่องหมายสีแดงนำหน้าเสมอ จนกว่าจะบันทึกสำเร็จหรือถูกลบ
+// ===== เมนู Kebab (จุดสามจุดแนวตั้ง) =====
+// ใช้ร่วมกันทั้งรายการไลน์และรายการธนาคาร
+// เดิมวางปุ่ม "แก้ไข/ลบ" ไว้ในแถวตรงๆ พอชื่อยาวปุ่มจะถูกดันจนเรียงไม่ตรงกัน
+function renderRowMenu(items) {
+    return `
+        <div class="row-menu">
+            <button class="kebab-btn" title="ตัวเลือก" onclick="toggleRowMenu(event, this)">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="row-menu-list" hidden>
+                ${items.map(it => `
+                <button class="${it.danger ? "danger" : ""}" onclick="closeAllRowMenus(); ${it.action}">
+                    <i class="bi ${it.icon}"></i> ${it.label}
+                </button>`).join("")}
+            </div>
+        </div>`;
+}
+
+function closeAllRowMenus() {
+    document.querySelectorAll(".row-menu-list").forEach(m => { m.hidden = true; });
+}
+
+function toggleRowMenu(event, btn) {
+    event.stopPropagation();
+    const menu = btn.nextElementSibling;
+    const wasOpen = !menu.hidden;
+    closeAllRowMenus();
+    menu.hidden = wasOpen;
+}
+
+// คลิกที่อื่นแล้วปิดเมนู
+document.addEventListener("click", (e) => {
+    if (!e.target.closest(".row-menu")) closeAllRowMenus();
+});
+
 function renderLineItem(prefix, line, index) {
-    const warnIcon = line.tokenError
-        ? `<span class="line-token-error" data-tip="ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"><i class="bi bi-exclamation-circle-fill"></i></span> `
-        : "";
+    // ไฟสถานะใช้ช่องเดียวกัน — แดงเมื่อ token มีปัญหา / เขียวเมื่อไลน์ยังทำงานปกติ
+    // แยกออกมานอก .row-name เพื่อให้ทุกแถวเรียงตรงกัน และไม่โดน ... ตัดไอคอนทิ้ง
+    const statusIcon = line.tokenError
+        ? `<span class="line-status line-token-error" data-tip="ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"><i class="bi bi-exclamation-circle-fill"></i></span>`
+        : `<span class="line-status line-ok" data-tip="ไลน์ทำงานปกติ"><i class="bi bi-circle-fill"></i></span>`;
     return `
         <div class="shop-line-item">
-            <span>${warnIcon}${line.linename}</span>
-            <div>
-                <button class="line-btn-edit" onclick="editLine('${prefix}', ${index})">แก้ไข</button>
-                <button class="line-btn-delete" onclick="deleteLine('${prefix}', ${index})">ลบ</button>
-            </div>
+            ${statusIcon}
+            <span class="row-name" title="${line.linename}">${line.linename}</span>
+            ${renderRowMenu([
+                { label: "แก้ไข", icon: "bi-pencil", action: `editLine('${prefix}', ${index})` },
+                { label: "ลบไลน์นี้", icon: "bi-trash", danger: true, action: `deleteLine('${prefix}', ${index})` },
+            ])}
         </div>
     `;
 }
@@ -523,7 +561,10 @@ async function openShopSetBotModal(prefix) {
         </div>` : ""}
 
         ${canSetbot("bonustime") ? `
-        <div class="setting-box">
+        <div class="setting-box is-checking" id="bonusBox_${prefix}">
+        <!-- ตอนเปิด modal ยังไม่รู้ว่ามีรูปไหม → บังทั้งกล่องไว้ก่อน
+             ไม่งั้นเห็นกรอบสล็อตว่างแล้วเข้าใจผิดว่ามีรูปอยู่ -->
+        <div class="box-loading"><span class="slot-spinner"></span></div>
         <div class="bonus-row">
             <div class="buttonsBot">
             <label class="switch-label">ปิด / เปิดการตอบ BonusTime</label>
@@ -534,55 +575,53 @@ async function openShopSetBotModal(prefix) {
             </label>
             </div>
 
-            <div class="buttonsBot bonus-upload">
+            <div class="buttonsBot bonus-upload is-locked" id="bonusUpload_${prefix}">
             <label class="switch-label">อัปโหลดรูป BonusTime (สูงสุด 2 รูป)</label>
             <div class="upload-row-column">
-                <label for="bonusImageInput_${prefix}" class="custom-file-btn">อัปโหลดรูป</label>
+                <label for="bonusImageInput_${prefix}" class="custom-file-btn">
+                    <i class="bi bi-cloud-arrow-up"></i> อัปโหลดรูป
+                </label>
+                <!-- เลือกไฟล์แล้วอัปโหลดทันที ไม่ต้องกดบันทึกอีกรอบ -->
                 <input type="file" id="bonusImageInput_${prefix}"
                     name="image"
                     accept="image/*" hidden
-                    onchange="showFileName(this, '${prefix}', 'bonus')">
-                <span id="bonusFileName_${prefix}" class="file-name">ยังไม่ได้เลือกไฟล์</span>
+                    onchange="uploadBonusImage('${prefix}', this)">
             </div>
             <div class="bonus-actions">
-                <button class="bonus-btn-save" onclick="saveBonusImage('${prefix}')">บันทึก</button>
-                <button class="bonus-btn-delete" onclick="deleteAllBonusImage('${prefix}')">ลบทั้งหมด</button>
+                <!-- โผล่เฉพาะตอนมีรูปครบ 2 รูป — updateBonusActions() เป็นคนสั่ง -->
+                <button class="bonus-btn-delete" hidden
+                        onclick="deleteAllBonusImage('${prefix}')">ลบทั้งหมด</button>
             </div>
             </div>
         </div>
 
         <div class="bonus-preview" id="bonusPreviewWrapper_${prefix}">
-            <div class="image-wrapper">
+            ${[1, 2].map(i => `
+            <div class="image-slot is-checking" id="bonusSlot${i}_${prefix}"
+                 onclick="changeBonusImage('${prefix}', ${i})" title="กดเพื่อเปลี่ยนรูปนี้">
                 <img
-                    id="bonusPreview1_${prefix}"
-                    src="/api/get-bonus-image?prefix=${prefix}&index=1&t=${Date.now()}"
-                    alt="BonusTime Image 1"
-                    loading="lazy"
-                    onerror="this.style.display='none';"
+                    id="bonusPreview${i}_${prefix}"
+                    src="/api/get-bonus-image?prefix=${prefix}&index=${i}&t=${Date.now()}"
+                    alt="รูป BonusTime ${i}"
+                    onload="bonusSlotLoaded('${prefix}', ${i})"
+                    onerror="markBonusSlotEmpty('${prefix}', ${i})"
                 >
-                <div class="image-slot-actions">
-                    <button class="change-btn" onclick="changeBonusImage('${prefix}', 1)">เปลี่ยนรูป</button>
-                    <button class="delete-btn" onclick="deleteBonusImage('${prefix}', 1)">✕</button>
+                <div class="slot-hint">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span>กดเพื่อเปลี่ยนรูปนี้</span>
                 </div>
-            </div>
-            <div class="image-wrapper">
-                <img
-                    id="bonusPreview2_${prefix}"
-                    src="/api/get-bonus-image?prefix=${prefix}&index=2&t=${Date.now()}"
-                    alt="BonusTime Image 2"
-                    loading="lazy"
-                    onerror="this.style.display='none';"
-                >
-                <div class="image-slot-actions">
-                    <button class="change-btn" onclick="changeBonusImage('${prefix}', 2)">เปลี่ยนรูป</button>
-                    <button class="delete-btn" onclick="deleteBonusImage('${prefix}', 2)">✕</button>
-                </div>
-            </div>
+                <button class="slot-remove" title="ลบรูปนี้"
+                        onclick="event.stopPropagation(); deleteBonusImage('${prefix}', ${i})">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <div class="slot-loading"><span class="slot-spinner"></span></div>
+            </div>`).join("")}
         </div>
         </div>` : ""}
 
         ${canSetbot("password") ? `
-        <div class="setting-box">
+        <div class="setting-box is-checking" id="passwordBox_${prefix}">
+        <div class="box-loading"><span class="slot-spinner"></span></div>
         <div class="password-row">
             <div class="buttonsBot">
             <label class="switch-label">ปิด / เปิดการตอบ ลืม password</label>
@@ -593,32 +632,41 @@ async function openShopSetBotModal(prefix) {
             </label>
             </div>
 
-            <div class="buttonsBot password-upload">
+            <div class="buttonsBot password-upload is-locked" id="passwordUpload_${prefix}">
             <label class="switch-label">อัปโหลดรูป ลืม password</label>
             <div class="upload-row-column">
-                <label for="passwordImageInput_${prefix}" class="custom-file-btn">อัปโหลดรูป</label>
-                <input type="file" id="passwordImageInput_${prefix}" 
-                    name="image" 
-                    accept="image/*" hidden 
-                    onchange="showFileName(this, '${prefix}', 'password')">
-                <span id="passwordFileName_${prefix}" class="file-name">ยังไม่ได้เลือกไฟล์</span>
-            </div>
-            <div class="password-actions">
-                <button class="password-btn-save" onclick="savePasswordImage('${prefix}')">บันทึก</button>
-                <button class="password-btn-delete" onclick="deletePasswordImage('${prefix}')">ลบ</button>
+                <label for="passwordImageInput_${prefix}" class="custom-file-btn">
+                    <i class="bi bi-cloud-arrow-up"></i> อัปโหลดรูป
+                </label>
+                <!-- เลือกไฟล์แล้วอัปโหลดทันที ไม่ต้องกดบันทึกอีกรอบ -->
+                <input type="file" id="passwordImageInput_${prefix}"
+                    name="image"
+                    accept="image/*" hidden
+                    onchange="uploadPasswordImage('${prefix}', this)">
             </div>
             </div>
         </div>
 
         <div class="password-preview">
-        <img 
-            id="passwordPreview_${prefix}" 
-            src="/api/get-password-image?prefix=${prefix}&t=${Date.now()}" 
-            alt="Password Image"
-            loading="lazy"
-            onload="document.getElementById('passwordFileName_${prefix}').textContent='มีรูปไฟล์ภาพแล้ว';"
-            onerror="this.style.display='none';"
-        >
+            <div class="image-slot is-checking" id="passwordSlot_${prefix}"
+                 onclick="changePasswordImage('${prefix}')" title="กดเพื่อเปลี่ยนรูปนี้">
+                <img
+                    id="passwordPreview_${prefix}"
+                    src="/api/get-password-image?prefix=${prefix}&t=${Date.now()}"
+                    alt="รูป ลืม password"
+                    onload="passwordSlotLoaded('${prefix}')"
+                    onerror="markPasswordSlotEmpty('${prefix}')"
+                >
+                <div class="slot-hint">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span>กดเพื่อเปลี่ยนรูปนี้</span>
+                </div>
+                <button class="slot-remove" title="ลบรูปนี้"
+                        onclick="event.stopPropagation(); deletePasswordImage('${prefix}')">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <div class="slot-loading"><span class="slot-spinner"></span></div>
+            </div>
         </div>
         </div>` : ""}
   `;
@@ -813,6 +861,18 @@ function renderShopCards() {
 
     let html = "";
     visible.forEach(shop => {
+        // บนมือถือปุ่ม "แก้ไข/ลบร้านค้า" ย้ายเข้าเมนู Kebab มุมขวาบนของการ์ด
+        // (วาดไว้เสมอ แล้วให้ CSS สลับว่าจะโชว์ปุ่มในแถวหรือเมนู — resize จอแล้วไม่ต้อง re-render)
+        const shopMenuItems = [];
+        if (canBtn("edit")) shopMenuItems.push({
+            label: "แก้ไข", icon: "bi-pencil",
+            action: `openEditShopModal('${shop.name}', '${shop.prefix}')`,
+        });
+        if (canBtn("delete")) shopMenuItems.push({
+            label: "ลบร้านค้า", icon: "bi-trash", danger: true,
+            action: `deleteShop('${shop.prefix}')`,
+        });
+
         html += `
         <div class="main-page shop-item">
             <div class="shop-info ${shop.status ? "active" : "inactive"}">
@@ -822,7 +882,7 @@ function renderShopCards() {
 
             <div class="buttons">
             ${canBtn("toggle") ? `
-            <span class="toggle-label">เปิด / ปิดบอท</span>
+            <span class="toggle-label">ปิด / เปิดบอท</span>
             <label class="switch">
                 <input type="checkbox" ${shop.status ? "checked" : ""} onchange="handleToggle('${shop.prefix}', this)">
                 <span class="slider"></span>
@@ -837,6 +897,7 @@ function renderShopCards() {
             ${canBtn("edit") ? `<button class="btn btn-edit" onclick="openEditShopModal('${shop.name}', '${shop.prefix}')">แก้ไข</button>` : ""}
             ${canBtn("delete") ? `<button class="btn btn-delete" onclick="deleteShop('${shop.prefix}')">ลบร้านค้า</button>` : ""}
             </div>
+            ${shopMenuItems.length ? `<div class="shop-row-menu">${renderRowMenu(shopMenuItems)}</div>` : ""}
         </div>
         `;
     });
@@ -919,7 +980,10 @@ function openBankModal(prefix) {
                     row.innerHTML = `
               <div class="shop-info ${account.status ? "active" : "inactive"}">
                 <span class="status-dot"></span>
-                <span class="shop-name">${account.name}</span>
+                <div class="bank-text">
+                  <span class="shop-name row-name" title="${account.name}">${account.name}</span>
+                  <span class="bank-account-no">${account.account || "-"}</span>
+                </div>
               </div>
               <div class="slip-check-option">
                 <label class="switchBank">
@@ -927,10 +991,10 @@ function openBankModal(prefix) {
                   <span class="slider"></span>
                 </label>
               </div>
-              <div class="buttons">
-                <button class="line-btn-edit" onclick="openEditBankModal('${prefix}', ${index})">แก้ไข</button>
-                <button class="line-btn-delete" onclick="deleteBank('${prefix}', ${index})">ลบ</button>
-              </div>
+              ${renderRowMenu([
+                { label: "แก้ไข", icon: "bi-pencil", action: `openEditBankModal('${prefix}', ${index})` },
+                { label: "ลบบัญชีนี้", icon: "bi-trash", danger: true, action: `deleteBank('${prefix}', ${index})` },
+              ])}
             `;
                     listContainer.appendChild(row);
                 });
@@ -1366,13 +1430,15 @@ async function updatePasswordStatus(prefix, newPasswordStatus, checkbox) {
   }
 }
 
+// ใช้กับรูป password เท่านั้น — รูป BonusTime อัปโหลดทันทีที่เลือกไฟล์ ไม่มีช่องชื่อไฟล์แล้ว
 function showFileName(input, prefix, type) {
   const file = input.files[0];
   const fileNameSpan = document.getElementById(
-    type === "bonus" 
-      ? `bonusFileName_${prefix}` 
+    type === "bonus"
+      ? `bonusFileName_${prefix}`
       : `passwordFileName_${prefix}`
   );
+  if (!fileNameSpan) return;
 
   if (file) {
     let name = file.name;
@@ -1392,6 +1458,12 @@ function showFileName(input, prefix, type) {
 
 
 async function deleteBonusImage(prefix, index) {
+    if (!confirm(`ยืนยันลบรูป BonusTime รูปที่ ${index}?`)) return;
+
+    // ใช้สถานะเดียวกับตอนอัปโหลด (เบลอ + สปินเนอร์) เพื่อบอกว่ากำลังลบอยู่
+    const slot = document.getElementById(`bonusSlot${index}_${prefix}`);
+    slot?.classList.add("is-loading");
+
     try {
         const response = await fetch("/api/delete-bonus-image", {
             method: "POST",
@@ -1402,17 +1474,28 @@ async function deleteBonusImage(prefix, index) {
         const result = await response.json();
         if (result.success) {
             const img = document.getElementById(`bonusPreview${index}_${prefix}`);
-            if (img) { img.src = ""; img.style.display = "none"; }
+            if (img) img.src = "";
+            markBonusSlotEmpty(prefix, index);   // ซ่อนสล็อตทั้งอัน (เคลียร์ is-loading ให้ด้วย)
         } else {
+            slot?.classList.remove("is-loading");
             alert("ไม่สามารถลบรูปได้: " + result.message);
         }
     } catch (err) {
+        slot?.classList.remove("is-loading");
         console.error("❌ Error deleting bonus image:", err);
         alert("เกิดข้อผิดพลาดในการลบรูป");
     }
 }
 
 async function deleteAllBonusImage(prefix) {
+    if (!confirm("ยืนยันลบรูป BonusTime ทั้งหมด? (การตอบ BonusTime จะถูกปิดด้วย)")) return;
+
+    // แสดงสถานะกำลังลบบนทุกรูปที่ยังอยู่
+    const slots = [1, 2]
+        .map(i => document.getElementById(`bonusSlot${i}_${prefix}`))
+        .filter(s => s && !s.hidden);
+    slots.forEach(s => s.classList.add("is-loading"));
+
     try {
         const response = await fetch("/api/delete-bonus-image", {
             method: "POST",
@@ -1422,10 +1505,11 @@ async function deleteAllBonusImage(prefix) {
 
         const result = await response.json();
         if (result.success) {
-            const img1 = document.getElementById(`bonusPreview1_${prefix}`);
-            const img2 = document.getElementById(`bonusPreview2_${prefix}`);
-            if (img1) { img1.src = ""; img1.style.display = "none"; }
-            if (img2) { img2.src = ""; img2.style.display = "none"; }
+            for (const i of [1, 2]) {
+                const img = document.getElementById(`bonusPreview${i}_${prefix}`);
+                if (img) img.src = "";
+                markBonusSlotEmpty(prefix, i);
+            }
 
             const switchInput = document.querySelector(
                 `input[type="checkbox"][onchange*="updateBonusTimeStatus('${prefix}"]`
@@ -1438,56 +1522,49 @@ async function deleteAllBonusImage(prefix) {
                 body: JSON.stringify({ prefix, statusBonusTime: false })
             });
         } else {
+            slots.forEach(s => s.classList.remove("is-loading"));
             alert("ไม่สามารถลบรูปได้: " + result.message);
         }
     } catch (err) {
+        slots.forEach(s => s.classList.remove("is-loading"));
         console.error("❌ Error deleting all bonus images:", err);
         alert("เกิดข้อผิดพลาดในการลบรูป");
     }
 }
 
+// กดที่รูป → เลือกไฟล์ใหม่มาแทนที่สล็อตนั้น
 async function changeBonusImage(prefix, index) {
+    const slot = document.getElementById(`bonusSlot${index}_${prefix}`);
+    if (!slot || slot.hidden) return;            // สล็อตว่าง — ให้ใช้ปุ่มอัปโหลดแทน
+    if (slot.classList.contains("is-loading")) return;  // กำลังอัปโหลดอยู่
+
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
-    fileInput.style.display = "none";
+    fileInput.hidden = true;
     document.body.appendChild(fileInput);
 
     fileInput.onchange = async () => {
         const file = fileInput.files[0];
-        if (!file) { document.body.removeChild(fileInput); return; }
-
-        const formData = new FormData();
-        formData.append("image", file);
-        formData.append("prefix", prefix);
-        formData.append("index", String(index));
-
-        try {
-            const res = await fetch("/api/upload-change-bonus-image", {
-                method: "POST",
-                body: formData
-            });
-            const result = await res.json();
-            if (result.success) {
-                const img = document.getElementById(`bonusPreview${index}_${prefix}`);
-                if (img) {
-                    img.src = `/api/get-bonus-image?prefix=${prefix}&index=${index}&t=${Date.now()}`;
-                    img.style.display = "block";
-                }
-            } else {
-                alert("❌ เปลี่ยนรูปไม่สำเร็จ: " + result.message);
-            }
-        } catch (err) {
-            console.error("❌ Error changing bonus image:", err);
-        } finally {
-            document.body.removeChild(fileInput);
-        }
+        document.body.removeChild(fileInput);
+        if (!file) return;
+        await putBonusImage({
+            prefix, index, file,
+            url: "/api/upload-change-bonus-image",
+            isChange: true,
+        });
     };
 
     fileInput.click();
 }
 
 async function deletePasswordImage(prefix) {
+    if (!confirm("ยืนยันลบรูป ลืม password? (การตอบ ลืม password จะถูกปิดด้วย)")) return;
+
+    // แสดงสถานะกำลังลบบนรูป (เบลอ + สปินเนอร์) เหมือนตอนอัปโหลด
+    const slot = document.getElementById(`passwordSlot_${prefix}`);
+    slot?.classList.add("is-loading");
+
     try {
         const response = await fetch("/api/delete-password-image", {
             method: "POST",
@@ -1498,10 +1575,8 @@ async function deletePasswordImage(prefix) {
         const result = await response.json();
         if (result.success) {
             const img = document.getElementById(`passwordPreview_${prefix}`);
-            if (img) img.style.display = "none";
-
-            const fileNameSpan = document.getElementById(`fileName_${prefix}`);
-            if (fileNameSpan) fileNameSpan.innerText = "ยังไม่ได้เลือกไฟล์";
+            if (img) img.src = "";
+            markPasswordSlotEmpty(prefix);   // ซ่อนสล็อตทั้งอัน (เคลียร์ is-loading ให้ด้วย)
 
             const switchInput = document.querySelector(
                 `input[type="checkbox"][onchange*="updatePasswordStatus('${prefix}"]`
@@ -1516,63 +1591,188 @@ async function deletePasswordImage(prefix) {
                 body: JSON.stringify({ prefix, statusPassword: false })
             });
         } else {
+            slot?.classList.remove("is-loading");
             alert("ไม่สามารถลบรูปได้: " + result.message);
         }
     } catch (err) {
+        slot?.classList.remove("is-loading");
         console.error("❌ Error deleting password image:", err);
         alert("เกิดข้อผิดพลาดในการลบรูป");
     }
 }
 
 
-async function saveBonusImage(prefix) {
-  const input = document.getElementById(`bonusImageInput_${prefix}`);
-  if (!input.files.length) {
-    alert("กรุณาเลือกรูปก่อนบันทึก");
-    return;
+// ===== รูป BonusTime =====
+// เลือกไฟล์แล้วอัปโหลดทันที (ไม่มีปุ่มบันทึกแล้ว)
+// ระหว่างอัปโหลดจะโชว์รูปที่เลือกแบบเบลอ + สปินเนอร์ พอเสร็จค่อยสลับเป็นรูปจริง
+
+// ตอนเปิด modal ยังไม่รู้ว่าร้านนี้มีรูปไหม สล็อตจึงเริ่มที่สถานะ "กำลังตรวจสอบ"
+// (สปินเนอร์ + ล็อกปุ่มอัปโหลด) แล้วค่อยเผยผลจริงเมื่อรูปโหลดเสร็จหรือโหลดไม่ได้
+// ไม่งั้นจะเห็นกล่องเปล่าพร้อมปุ่มลบ ทำให้เข้าใจผิดว่ามีรูปอยู่แล้ว
+const bonusChecksLeft = {};
+
+function finishBonusCheck(prefix) {
+  bonusChecksLeft[prefix] = (bonusChecksLeft[prefix] ?? 2) - 1;
+  if (bonusChecksLeft[prefix] > 0) return;   // รอให้รู้ผลครบทั้ง 2 สล็อตก่อน
+  document.getElementById(`bonusUpload_${prefix}`)?.classList.remove("is-locked");
+  document.getElementById(`bonusBox_${prefix}`)?.classList.remove("is-checking");
+}
+
+// นับสล็อตที่มีรูปจริง (สล็อตว่างถูกซ่อนไว้)
+function countBonusImages(prefix) {
+  return [1, 2].filter(i => {
+    const slot = document.getElementById(`bonusSlot${i}_${prefix}`);
+    return slot && !slot.hidden;
+  }).length;
+}
+
+// ปุ่ม "ลบทั้งหมด" จะโผล่เฉพาะตอนมีรูปครบ 2 รูป
+// (มีรูปเดียวก็ใช้ปุ่ม X บนรูปนั้นได้เลย ไม่ต้องมีปุ่มซ้ำซ้อน)
+function updateBonusActions(prefix) {
+  const btn = document.querySelector(`#bonusUpload_${prefix} .bonus-btn-delete`);
+  if (btn) btn.hidden = countBonusImages(prefix) < 2;
+}
+
+// รูปโหลดได้ = สล็อตนี้มีรูปจริง
+// นับเฉพาะรอบตรวจสอบครั้งแรกเท่านั้น (onload ยิงซ้ำทุกครั้งที่เปลี่ยนรูป)
+function bonusSlotLoaded(prefix, index) {
+  const slot = document.getElementById(`bonusSlot${index}_${prefix}`);
+  if (!slot) return;
+  const wasChecking = slot.classList.contains("is-checking");
+  slot.classList.remove("is-checking");
+  if (wasChecking) finishBonusCheck(prefix);
+  updateBonusActions(prefix);
+}
+
+// สล็อตที่ไม่มีรูปจะถูกซ่อน — โหลดรูปไม่สำเร็จ = สล็อตว่าง
+// ฟังก์ชันนี้ถูกเรียกตอนลบรูปด้วย จึงต้องเช็คก่อนว่าอยู่ในรอบตรวจสอบหรือไม่
+function markBonusSlotEmpty(prefix, index) {
+  const slot = document.getElementById(`bonusSlot${index}_${prefix}`);
+  if (!slot) return;
+  const wasChecking = slot.classList.contains("is-checking");
+  slot.classList.remove("is-checking");
+  slot.classList.remove("is-loading");
+  slot.hidden = true;
+  if (wasChecking) finishBonusCheck(prefix);
+  updateBonusActions(prefix);
+}
+
+function getEmptyBonusSlot(prefix) {
+  for (const i of [1, 2]) {
+    const slot = document.getElementById(`bonusSlot${i}_${prefix}`);
+    if (slot && slot.hidden) return i;
   }
+  return null;
+}
+
+// รอให้รูปจริงโหลดเสร็จก่อนค่อยเอาเบลอออก จะได้ไม่กระพริบ
+function preloadImage(src) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = im.onerror = () => resolve();
+    im.src = src;
+  });
+}
+
+async function putBonusImage({ prefix, index, file, url, isChange }) {
+  const slot = document.getElementById(`bonusSlot${index}_${prefix}`);
+  const img = document.getElementById(`bonusPreview${index}_${prefix}`);
+  if (!slot || !img) return;
+
+  // โชว์รูปที่เพิ่งเลือกทันที (เบลอ + สปินเนอร์) ผู้ใช้จะรู้ว่ากำลังทำงานอยู่
+  const localUrl = URL.createObjectURL(file);
+  slot.hidden = false;
+  img.src = localUrl;
+  slot.classList.add("is-loading");
 
   const formData = new FormData();
-  formData.append("image", input.files[0]);
+  formData.append("image", file);
   formData.append("prefix", prefix);
+  if (isChange) formData.append("index", String(index));
 
   try {
-    const res = await fetch("/api/upload-bonus-image", {
-      method: "POST",
-      body: formData
-    });
-
+    const res = await fetch(url, { method: "POST", body: formData });
     const result = await res.json();
-    if (result.success) {
-      // server บอกว่า save ลง slot ไหน (image1 หรือ image2)
-      const slotIndex = result.slot === "image2" ? 2 : 1;
-      const preview = document.getElementById(`bonusPreview${slotIndex}_${prefix}`);
-      if (preview) {
-        preview.src = `/api/get-bonus-image?prefix=${prefix}&index=${slotIndex}&t=${Date.now()}`;
-        preview.style.display = "block";
-      }
+    if (!result.success) throw new Error(result.message || "อัปโหลดรูปไม่สำเร็จ");
 
-      // reset input
-      input.value = "";
-      const fileNameSpan = document.getElementById(`bonusFileName_${prefix}`);
-      if (fileNameSpan) fileNameSpan.textContent = "ยังไม่ได้เลือกไฟล์";
-    } else {
-      alert("❌ " + (result.message || "บันทึกภาพไม่สำเร็จ"));
+    // ตอนเพิ่มรูปใหม่ เซิร์ฟเวอร์เป็นคนตัดสินใจว่าลงสล็อตไหน
+    const finalIndex = isChange ? index : (result.slot === "image2" ? 2 : 1);
+    const finalSlot = document.getElementById(`bonusSlot${finalIndex}_${prefix}`);
+    const finalImg = document.getElementById(`bonusPreview${finalIndex}_${prefix}`);
+
+    const realUrl = `/api/get-bonus-image?prefix=${prefix}&index=${finalIndex}&t=${Date.now()}`;
+    await preloadImage(realUrl);
+
+    if (finalSlot && finalImg) {
+      finalSlot.hidden = false;
+      finalImg.src = realUrl;
+      finalSlot.classList.remove("is-loading");
     }
+    if (finalSlot !== slot) slot.classList.remove("is-loading");
   } catch (err) {
-    console.error("❌ Error uploading image:", err);
+    console.error("❌ อัปโหลดรูป BonusTime ไม่สำเร็จ:", err);
+    alert("❌ " + err.message);
+    slot.classList.remove("is-loading");
+    // คืนสภาพเดิม — ถ้าไม่มีรูปเดิมอยู่ onerror จะซ่อนสล็อตให้เอง
+    img.src = `/api/get-bonus-image?prefix=${prefix}&index=${index}&t=${Date.now()}`;
+  } finally {
+    URL.revokeObjectURL(localUrl);
   }
 }
 
-async function savePasswordImage(prefix) {
-  const input = document.getElementById(`passwordImageInput_${prefix}`);
-  if (!input.files.length) {
-    alert("กรุณาเลือกรูปก่อนบันทึก");
+// กดปุ่ม "อัปโหลดรูป" → ลงสล็อตว่างถัดไป
+async function uploadBonusImage(prefix, input) {
+  const file = input.files?.[0];
+  input.value = "";   // เคลียร์ เพื่อให้เลือกไฟล์เดิมซ้ำได้
+  if (!file) return;
+
+  const index = getEmptyBonusSlot(prefix);
+  if (!index) {
+    alert("มีรูปครบ 2 รูปแล้ว — กดที่รูปเพื่อเปลี่ยนรูปนั้นแทน");
     return;
   }
+  await putBonusImage({ prefix, index, file, url: "/api/upload-bonus-image", isChange: false });
+}
+
+// ===== รูป ลืม password (สล็อตเดียว) =====
+// ใช้หลักการเดียวกับรูป BonusTime — เลือกไฟล์แล้วอัปโหลดทันที + เบลอระหว่างรอ
+
+// ปลดล็อกปุ่มอัปโหลดเมื่อรู้ผลแล้วว่ามีรูปหรือไม่
+function finishPasswordCheck(prefix) {
+  document.getElementById(`passwordUpload_${prefix}`)?.classList.remove("is-locked");
+  document.getElementById(`passwordBox_${prefix}`)?.classList.remove("is-checking");
+}
+
+function passwordSlotLoaded(prefix) {
+  const slot = document.getElementById(`passwordSlot_${prefix}`);
+  if (!slot) return;
+  const wasChecking = slot.classList.contains("is-checking");
+  slot.classList.remove("is-checking");
+  if (wasChecking) finishPasswordCheck(prefix);
+}
+
+function markPasswordSlotEmpty(prefix) {
+  const slot = document.getElementById(`passwordSlot_${prefix}`);
+  if (!slot) return;
+  const wasChecking = slot.classList.contains("is-checking");
+  slot.classList.remove("is-checking");
+  slot.classList.remove("is-loading");
+  slot.hidden = true;
+  if (wasChecking) finishPasswordCheck(prefix);
+}
+
+async function putPasswordImage(prefix, file) {
+  const slot = document.getElementById(`passwordSlot_${prefix}`);
+  const img = document.getElementById(`passwordPreview_${prefix}`);
+  if (!slot || !img) return;
+
+  const localUrl = URL.createObjectURL(file);
+  slot.hidden = false;
+  img.src = localUrl;
+  slot.classList.add("is-loading");
 
   const formData = new FormData();
-  formData.append("image", input.files[0]);
+  formData.append("image", file);
   formData.append("prefix", prefix);
 
   try {
@@ -1580,18 +1780,50 @@ async function savePasswordImage(prefix) {
       method: "POST",
       body: formData
     });
-
     const result = await res.json();
-    if (result.success) {
-      const preview = document.getElementById(`passwordPreview_${prefix}`);
-      preview.src = `/api/get-password-image?prefix=${prefix}&t=${Date.now()}`;
-      preview.style.display = "block";
-    } else {
-      alert("❌ บันทึกภาพไม่สำเร็จ");
-    }
+    if (!result.success) throw new Error(result.message || "อัปโหลดรูปไม่สำเร็จ");
+
+    const realUrl = `/api/get-password-image?prefix=${prefix}&t=${Date.now()}`;
+    await preloadImage(realUrl);
+    img.src = realUrl;
   } catch (err) {
-    console.error("❌ Error uploading image:", err);
+    console.error("❌ อัปโหลดรูป password ไม่สำเร็จ:", err);
+    alert("❌ " + err.message);
+    img.src = `/api/get-password-image?prefix=${prefix}&t=${Date.now()}`;
+  } finally {
+    slot.classList.remove("is-loading");
+    URL.revokeObjectURL(localUrl);
   }
+}
+
+// กดปุ่ม "อัปโหลดรูป"
+async function uploadPasswordImage(prefix, input) {
+  const file = input.files?.[0];
+  input.value = "";   // เคลียร์ เพื่อให้เลือกไฟล์เดิมซ้ำได้
+  if (!file) return;
+  await putPasswordImage(prefix, file);
+}
+
+// กดที่รูป → เลือกไฟล์ใหม่มาแทน
+async function changePasswordImage(prefix) {
+  const slot = document.getElementById(`passwordSlot_${prefix}`);
+  if (!slot || slot.hidden) return;
+  if (slot.classList.contains("is-loading")) return;
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.hidden = true;
+  document.body.appendChild(fileInput);
+
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0];
+    document.body.removeChild(fileInput);
+    if (!file) return;
+    await putPasswordImage(prefix, file);
+  };
+
+  fileInput.click();
 }
 
 async function updateSlipCheckOption(prefix, newOption) {

@@ -32,5 +32,10 @@
 3. **ปุ่มที่ต้องมีสิทธิ์** — เช็คใน `views/index.html` ส่วนที่อ่าน `me.permissions.sidebar`
    และต้องกันฝั่ง server ด้วย ไม่ใช่ซ่อนแค่ UI
 
-4. **หน้าต่างที่ยิง API ช้า** — ใส่ overlay กำลังโหลด + ถามยืนยันก่อนปิด
-   (ดู `setLineModalLoading()` / `confirmCloseLineModal()` ใน `main.js`)
+4. **หน้าต่างที่ยิง API ช้า** — ใส่ overlay กำลังโหลด (ดู `setLineModalLoading()` ใน `main.js`)
+   overlay ครอบปุ่ม X อยู่แล้ว จึงไม่ต้องถามยืนยันก่อนปิด
+
+5. **Responsive** — เขียนใน `views/css/mobile.css` เท่านั้น (link ท้ายสุดใน index.html)
+   ห้ามใส่ media query ในไฟล์อื่น เพราะจะโดน override ตาม source order
+   ถ้าเพิ่มหน้าใหม่ที่ใช้ `position: absolute; left: 260px` ต้องเพิ่ม selector
+   ในบล็อก `@media (max-width: 768px)` ของ `mobile.css` ด้วย

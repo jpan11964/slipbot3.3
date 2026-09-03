@@ -14,14 +14,24 @@
   margin: 0 auto;
 }
 
+/* หัวข้อต้องกึ่งกลาง "ทั้งหน้า" จึงให้กล่องหัวข้อเป็น block เต็มความกว้าง
+   แล้วลอยปุ่มสร้างบัญชีไปมุมขวาบนแทน (ตำแหน่งที่ตาเห็นยังเหมือนเดิม) */
 .permissions-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  position: relative;
+  margin-bottom: 0;
+  /* เว้นซ้าย-ขวาเท่ากันเผื่อความกว้างปุ่มที่ลอยอยู่มุมขวา
+     สมมาตรจึงไม่ทำให้หัวข้อเบี้ยว แต่การันตีว่าข้อความไม่มีทางไปชนปุ่ม */
+  padding: 0 170px;
+}
+
+.permissions-head > .perm-create-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
 }
 
 .permissions-subtitle {
+  text-align: center;   /* ตามหัวข้อที่ย้ายมากึ่งกลาง */
   margin: -8px 0 24px;
   font-size: 13.5px;
   color: var(--text-muted);
@@ -230,9 +240,47 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding-bottom: 16px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border-light);
+}
+
+/* กล่องถามตอนยังไม่บันทึกสิทธิ์แล้วจะออกจากหน้า */
+.perm-unsaved-text {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.perm-unsaved-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.perm-unsaved-actions > button {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.perm-unsaved-leave {
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.perm-unsaved-leave:hover {
+  background: var(--bg);
+  color: var(--text);
 }
 
 .perm-user {
@@ -369,12 +417,37 @@
   margin-bottom: 10px;
 }
 
+/* ผลการบันทึกเป็น toast ลอยกลางล่างจอ — เดิมเป็นข้อความเล็กๆ ท้ายการ์ด
+   ซึ่งมองแทบไม่เห็นบนเดสก์ท็อป และตกจอไปเลยบนมือถือเมื่อสิทธิ์เยอะ
+   (:not(:empty) = โผล่เฉพาะตอนมีข้อความ) */
 .perm-status {
-  font-size: 12.5px;
-  font-weight: 600;
-  min-height: 18px;
-  margin-top: 4px;
+  min-height: 0;
 }
 
-.perm-status.success { color: var(--green-dark); }
-.perm-status.error { color: var(--red); }
+.perm-status:not(:empty) {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 1400;          /* เหนือ modal */
+  margin: 0;
+  padding: 12px 24px;
+  max-width: 88vw;
+  border-radius: 99px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+.perm-status.success:not(:empty) {
+  background: var(--green);
+  color: #fff;
+}
+
+.perm-status.error:not(:empty) {
+  background: var(--red);
+  color: #fff;
+}
