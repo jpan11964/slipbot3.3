@@ -903,6 +903,32 @@ function renderShopCards() {
     });
 
     shopListElement.innerHTML = html;
+
+    // มาจากการกดการแจ้งเตือน "ไลน์หลุดการเชื่อมต่อ" — ข้อมูลร้านพร้อมแล้วถึงเปิดได้
+    if (window.__lineJumpTo) {
+        const { prefix, linename } = window.__lineJumpTo;
+        window.__lineJumpTo = null;
+        if (shopData.some(s => s.prefix === prefix)) {
+            openShopLinesModal(prefix);
+            flashLineTooltip(linename);
+        } else {
+            alert(`ไม่พบร้าน ${prefix} แล้ว — อาจถูกลบไปก่อนหน้านี้`);
+        }
+    }
+}
+
+// ชี้ให้เห็นว่าไลน์ไหนมีปัญหา — กางข้อความลอยค้างไว้สักพักโดยไม่ต้องเอาเมาส์ไปชี้
+function flashLineTooltip(linename) {
+    const rows = [...document.querySelectorAll("#line-list .shop-line-item")];
+    const row = linename
+        ? rows.find(r => r.querySelector(".row-name")?.textContent.trim() === linename.trim())
+        : rows.find(r => r.querySelector(".line-token-error"));
+    const status = row?.querySelector(".line-status");
+    if (!status) return;
+
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    status.classList.add("tip-open");
+    setTimeout(() => status.classList.remove("tip-open"), 6000);
 }
 
 async function loadShopsAndRender() {

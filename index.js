@@ -26,6 +26,7 @@ import moment from "moment-timezone";
 import { connectDB } from "./mongo.js";
 import Shop from "./models/Shop.js";
 import LogModel from "./models/Log.js";
+import { recordAudit, buildAuditEntry, listAudit, auditFilterOptions, AUDIT_SKIP, flushAudit } from "./utils/auditLog.js";
 import { checkAndSavePhoneNumber, checkAndUpdatePhoneNumber } from "./utils/savePhoneNumber.js";
 import { createHealingClient, startTokenRefreshScheduler, markLineTokenError, clearLineTokenError } from "./utils/lineToken.js";
 import { addNotification, listNotifications, unreadCount, markAllRead, clearNotifications, loadNotificationsFromDB, onNotification } from "./utils/notificationStore.js";
@@ -151,6 +152,34 @@ app.use("/webhook", (req, res, next) => {
 app.use("/webhook", express.raw({ type: "application/json" })); // อยู่บนสุด
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// ===== บันทึกประวัติการใช้งาน (ใครกดอะไร) =====
+// ดักตรงนี้ที่เดียว = ครอบคลุมทุกปุ่มโดยไม่ต้องไปแก้ route ทีละอัน
+// อ่าน body ตอน "finish" เพราะ multer (อัปโหลดรูป) เพิ่งเติม req.body ทีหลัง
+// และตอนนั้นถึงจะรู้ว่าทำสำเร็จหรือไม่ (status code)
+app.use((req, res, next) => {
+  const isLogout = req.method === "GET" && req.path === "/logout";
+  const changesData = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+
+  if (!isLogout && !changesData) return next();
+  if (req.path.startsWith("/webhook")) return next();   // ทราฟฟิกจาก LINE ไม่ใช่คนกด
+  if (AUDIT_SKIP.has(req.path)) return next();
+
+  const username = req.session?.user?.username;   // เก็บไว้ก่อน — logout จะทำลาย session
+  res.on("finish", () => {
+    try {
+      const entry = buildAuditEntry(req, res);
+      if (entry.username === "-" && username) entry.username = username;
+      if (isLogout) { entry.action = "auth.logout"; entry.label = "ออกจากระบบ"; }
+      // ไม่บันทึกคำขอของคนที่ยังไม่ได้ล็อกอิน ยกเว้นการพยายามล็อกอิน (ต้องเห็นว่าใครพยายามเข้า)
+      if (entry.username === "-" && req.path !== "/login") return;
+      recordAudit(entry);
+    } catch (err) {
+      console.error("สร้างประวัติการใช้งานไม่สำเร็จ:", err.message);
+    }
+  });
+  next();
+});
 
 // ===== Webhook เดียวแบบ dynamic =====
 // อ่าน shop/line จาก DB สดทุก request — เพิ่มร้าน/เปิดบอทมีผลทันที ไม่ต้อง register route ใน RAM
@@ -718,8 +747,8 @@ app.get("/page/:name", isAuthenticated, async (req, res) => {
   const name = req.params.name;
   const { username, role } = req.session.user;
 
-  // หน้าผู้จัดการ (จัดการสิทธิ์ / จัดการ prefix) — OWNER หรือ ADMIN ที่ได้รับสิทธิ์
-  if (name === "permissions" || name === "prefixes") {
+  // หน้าผู้จัดการ — OWNER หรือ ADMIN ที่ได้รับสิทธิ์ (รายชื่ออยู่ที่ ALL_ADMIN_PAGES ที่เดียว)
+  if (ALL_ADMIN_PAGES.includes(name)) {
     if (!(await userCanManage(req.session.user, name))) {
       return res.status(403).send("คุณไม่มีสิทธิ์เข้าถึงหน้านี้");
     }
@@ -743,7 +772,7 @@ app.get("/page/:name", isAuthenticated, async (req, res) => {
 });
 
 // ===== สิทธิ์ผู้จัดการ (OWNER หรือ ADMIN ที่ได้รับมอบ) =====
-// page = "permissions" หรือ "prefixes"
+// page = หนึ่งใน ALL_ADMIN_PAGES ("permissions" / "prefixes" / "audit")
 async function userCanManage(sessionUser, page) {
   if (!sessionUser) return false;
   if (sessionUser.role === "OWNER") return true;
@@ -1144,6 +1173,38 @@ app.post("/api/notifications/test", isAuthenticated, async (req, res) => {
     message: "ต่ออายุ LINE token อัตโนมัติสำเร็จ 15 บัญชี",
   });
   res.json({ success: true, unread: unreadCount(req.session.user.username) });
+});
+
+// ===== ประวัติการใช้งาน (ใครทำอะไรไปบ้าง) =====
+// เป็นหน้าผู้จัดการ — OWNER เห็นเสมอ, ADMIN ต้องได้รับมอบสิทธิ์ "audit"
+app.get("/api/audit", isAuthenticated, requireManage("audit"), async (req, res) => {
+  try {
+    const skip = Math.max(0, parseInt(req.query.skip) || 0);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
+    const { total, rows } = await listAudit({
+      q: String(req.query.q || "").trim(),
+      username: String(req.query.username || ""),
+      action: String(req.query.action || ""),
+      from: String(req.query.from || ""),
+      to: String(req.query.to || ""),
+      skip,
+      limit,
+    });
+    res.json({ success: true, total, rows });
+  } catch (err) {
+    console.error("โหลดประวัติการใช้งานไม่สำเร็จ:", err.message);
+    res.status(500).json({ success: false, message: "โหลดประวัติการใช้งานไม่สำเร็จ" });
+  }
+});
+
+// ตัวเลือกใน dropdown ตัวกรอง (ผู้ใช้ / ประเภทการกระทำ ที่มีอยู่จริง)
+app.get("/api/audit/filters", isAuthenticated, requireManage("audit"), async (req, res) => {
+  try {
+    res.json({ success: true, ...(await auditFilterOptions()) });
+  } catch (err) {
+    console.error("โหลดตัวกรองประวัติไม่สำเร็จ:", err.message);
+    res.status(500).json({ success: false, users: [], actions: [] });
+  }
 });
 
 app.get("/api/env", (req, res) => {
@@ -2105,6 +2166,14 @@ export const restartWebhooks = async () => {
     broadcastLog(`❌ restartWebhooks ล้มเหลว: ${err?.message || err}`);
   }
 };
+
+// เขียนประวัติที่ยังค้างใน buffer ให้หมดก่อนปิดโปรเซส
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, async () => {
+    await flushAudit().catch(() => {});
+    process.exit(0);
+  });
+}
 
 app.listen(PORT, async () => {
   console.log(`🟢 Server started at port ${PORT}`);

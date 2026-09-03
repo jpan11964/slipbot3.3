@@ -896,8 +896,11 @@
   z-index: 100;
 }
 
+/* .tip-open = กางข้อความค้างไว้เอง (ใช้ตอนถูกพามาจากการแจ้งเตือน ไม่ได้เอาเมาส์มาชี้) */
 .main-page .line-status:hover::after,
-.main-page .line-status:hover::before {
+.main-page .line-status:hover::before,
+.main-page .line-status.tip-open::after,
+.main-page .line-status.tip-open::before {
   opacity: 1;
   visibility: visible;
 }

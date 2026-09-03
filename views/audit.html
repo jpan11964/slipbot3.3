@@ -1,0 +1,75 @@
+<div class="audit-page">
+  <div class="audit-container">
+    <h1 class="page-title">ประวัติการใช้งาน</h1>
+    <p class="audit-subtitle">บันทึกทุกการกระทำที่เปลี่ยนแปลงข้อมูล — ใครทำอะไร กับอะไร เมื่อไหร่</p>
+
+    <div class="audit-toolbar">
+      <div class="audit-search">
+        <i class="bi bi-search"></i>
+        <input type="text" id="auditSearch" placeholder="ค้นหาชื่อผู้ใช้ / ร้าน / รายละเอียด" autocomplete="off">
+      </div>
+
+      <div class="audit-filters">
+        <button type="button" class="audit-clear-btn" id="auditClear" title="ล้างตัวกรอง">
+          <i class="bi bi-x-circle"></i> ล้าง
+        </button>
+
+        <div class="audit-select">
+          <i class="bi bi-person"></i>
+          <select id="auditUser">
+            <option value="">ทุกผู้ใช้</option>
+          </select>
+        </div>
+
+        <div class="audit-select">
+          <i class="bi bi-list-check"></i>
+          <select id="auditAction">
+            <option value="">ทุกการกระทำ</option>
+          </select>
+        </div>
+
+        <label>ตั้งแต่
+          <input type="datetime-local" id="auditFrom" autocomplete="off">
+        </label>
+        <label>ถึง
+          <input type="datetime-local" id="auditTo" autocomplete="off">
+        </label>
+
+        <div class="audit-select">
+          <i class="bi bi-clock-history"></i>
+          <select id="auditQuick">
+            <option value="">ทั้งหมด</option>
+            <option value="1">1 วันล่าสุด</option>
+            <option value="7">7 วันล่าสุด</option>
+            <option value="30">30 วันล่าสุด</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="audit-count" id="auditCount"></div>
+    </div>
+
+    <div class="audit-table-wrap">
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th class="col-time">เวลา</th>
+            <th class="col-user">ผู้ใช้</th>
+            <th class="col-action">การกระทำ</th>
+            <th class="col-target">เป้าหมาย</th>
+            <th class="col-detail">รายละเอียด</th>
+            <th class="col-status">ผล</th>
+          </tr>
+        </thead>
+        <tbody id="auditBody"></tbody>
+      </table>
+
+      <div class="audit-state" id="auditState" hidden></div>
+    </div>
+
+    <div class="audit-more">
+      <button type="button" class="audit-more-btn" id="auditMore" hidden>โหลดเพิ่ม</button>
+    </div>
+  </div>
+</div>
+<script src="/views/js/audit.js"></script>

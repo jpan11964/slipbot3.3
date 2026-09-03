@@ -1,0 +1,268 @@
+<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ทดสอบเด้งไปไลน์ที่มีปัญหา</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/views/css/shared.css"><link rel="stylesheet" href="/views/css/main.css">
+<link rel="stylesheet" href="/views/css/mobile.css">
+<style>body{margin:0}.main-page .main-container{left:0}</style></head>
+<body><div class="main-page">
+  <div class="main-container">
+    <h1 class="page-title">หน้าหลักระบบ</h1>
+
+    <!-- ตัวกรอง + รายการร้าน อยู่ในคอลัมน์เดียวกัน เพื่อให้ขอบซ้ายตรงกัน
+         (หัวข้อหน้าอยู่นอกคอลัมน์ เพราะต้องกึ่งกลางจอเสมอ) -->
+    <div class="shop-column">
+    <!-- ตัวกรอง: เลือกร้านที่ต้องการแสดง -->
+    <div class="shop-filter-bar">
+      <div class="shop-filter">
+        <button type="button" class="shop-filter-toggle" id="shopFilterToggle" onclick="toggleShopFilter()">
+          <i class="bi bi-funnel"></i>
+          <span id="shopFilterLabel">แสดงทุกร้าน</span>
+          <i class="bi bi-chevron-down shop-filter-caret"></i>
+        </button>
+        <div class="shop-filter-menu" id="shopFilterMenu" hidden>
+          <label class="shop-filter-item shop-filter-all">
+            <input type="checkbox" id="shopFilterAll" onchange="toggleShopFilterAll(this)">
+            <span>เลือกทั้งหมด</span>
+          </label>
+          <div class="shop-filter-list" id="shopFilterList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shop list: ส่วนที่เลื่อนได้ -->
+    <div class="shop-list" id="shop-list">
+      <!-- รายการร้านค้าจะถูกเติมด้วย JavaScript -->
+    </div>
+    </div><!-- /.shop-column -->
+<!-- ปุ่มเพิ่มร้านค้า -->
+<div class="footer">
+    <div class="button-group">
+        <button class="btn-add-shop" onclick="openAddShopModal()">+ เพิ่มร้านค้า</button>
+    </div>
+</div>
+
+<!-- Modal รายการบัญชี LINE -->
+<div id="shopLinesModal" class="modal">
+    <div class="showLine-modal-content">
+        <span class="modal-close" onclick="closeShopLinesModal()">&times;</span>
+        <h2 id="modal-shop-title">รายการบัญชี <strong>LINE</strong> ร้าน</h2>
+        <div id="line-list"></div> <!-- แสดงรายการบัญชี LINE -->
+        <button class="btn-add-line" onclick="addNewLine()">+ เพิ่มบัญชีไลน์</button>
+    </div>
+</div>
+
+
+<!-- Modal เพิ่มบัญชี LINE -->
+<div id="addLineModal" class="modal">
+    <div class="Line-modal-content">
+        <span class="modal-close" onclick="closeAddLineModal()">&times;</span>
+        <h2>
+            <div class="modal-header">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/LINE_logo.svg/120px-LINE_logo.svg.png" width="40px" />
+                <strong>เพิ่ม LINE ให้ร้าน <span id="shopNameTitle"></span></strong>
+            </div>
+        </h2>
+
+        <div class="input-group">
+            <label>Channel ID</label>
+            <input type="text" id="newChannelID" autocomplete="off">
+        </div>
+
+        <div class="input-group">
+            <label>Secret Token</label>
+            <input type="text" id="newSecretToken" autocomplete="off">
+        </div>
+        <div id="alertMessageAddline" class="alert-message-Line"></div>
+        <button class="btn-line-save" onclick="saveNewLine()">บันทึก</button>
+
+        <div class="line-modal-loading">
+            <div class="line-spinner"></div>
+            <p>กำลังเชื่อมต่อ LINE...</p>
+            <small>กรุณาอย่ารีเฟรชหน้าเว็บไซต์</small>
+        </div>
+    </div>
+</div>
+
+<!-- Modal แก้ไขบัญชี LINE -->
+<div id="editLineModal" class="modal">
+    <div class="Line-modal-content">
+        <span class="modal-close" onclick="closeEditLineModal()">&times;</span>
+        <h2>แก้ไขบัญชี LINE</h2>
+
+        <div class="input-group">
+            <label>Channel ID</label>
+            <input type="text" id="editChannelID" autocomplete="off">
+        </div>
+
+        <div class="input-group">
+            <label>Secret Token</label>
+            <input type="text" id="editSecretToken" autocomplete="off">
+        </div>
+        <div id="alertMessageEditLine" class="alert-message-Line"></div>
+        <button class="btn-line-save" onclick="saveEditedLine()">บันทึก</button>
+
+        <div class="line-modal-loading">
+            <div class="line-spinner"></div>
+            <p>กำลังเชื่อมต่อ LINE...</p>
+            <small>กรุณาอย่ารีเฟรชหน้าเว็บไซต์</small>
+        </div>
+    </div>
+</div>
+<!-- Modal แก้ไขร้านค้า -->
+<div id="editShopModal" class="modal">
+    <div class="editShop-modal-content">
+      <span class="modal-close" onclick="closeEditShopModal()">&times;</span>
+      <h2>แก้ไขร้านค้า</h2>
+  
+      <div class="input-group">
+        <label>ชื่อร้าน:</label>
+        <input type="text" id="editShopName" autocomplete="off">
+      </div>
+  
+      <div class="input-group">
+        <label>Prefix:</label>
+        <input type="text" id="editShopPrefix" disabled autocomplete="off">
+      </div>
+      <div id="alertMessageEditShop" class="alert-message-Shop"></div>
+      <button class="btn-shop-save" onclick="saveShopChanges()">บันทึก</button>
+    </div>
+  </div>
+
+<!-- Modal สำหรับเพิ่มร้านค้า -->
+<div id="addShopModal" class="modal">
+    <div class="addShop-modal-content">
+        <!-- ปุ่มปิด Modal (X) -->
+        <span class="modal-close" onclick="closeAddShopModal()">&times;</span>
+
+        <h2>เพิ่มร้านค้า</h2>
+
+        <div class="input-group">
+            <label>ชื่อร้าน:</label>
+            <input type="text" id="shopName" autocomplete="off">
+        </div>
+
+        <div class="input-group">
+            <label>Prefix:</label>
+            <input type="text" id="shopPrefix" autocomplete="off">
+        </div>
+        <div id="alertMessageShop" class="alert-message-Shop"></div>
+
+        <button class="btn-shop-save" onclick="addShop()">บันทึก</button>
+    </div>
+</div>
+
+<!-- Modal การตั้งค่าบอทร้าน -->
+<div id="shopSetbotModal" class="modal shopSetbot-modal">
+    <div class="shopSetbot-modal-content">
+      <span class="modal-close" onclick="closeShopSetBotModal()">&times;</span>
+      <h2 id="shopSetbotTitle" class="shopSetbotTitle"></h2>
+      <div id="shopSetbotBody">
+        <!-- ใส่รายละเอียดร้านเพิ่มเติมที่นี่ในอนาคต -->
+      </div>
+    </div>
+  </div>
+
+<!-- Modal แสดงข้อมูลธนาคาร -->  
+<div id="bankModal" class="modal bank-modal">
+    <div class="bank-modal-content">
+        <span class="modal-close" onclick="closeBankModal()">&times;</span>
+        <h2 id="BankTitle" class="BankTitle">รายการบัญชีธนาคารร้าน:</h2>
+      <div id="bank-list"></div>
+    </div>
+  </div>
+
+  <!-- Modal เพิ่มบัญชีธนาคาร -->
+  <div id="addbankModal" class="modal">
+    <div class="add-bank-modal-content">
+        <span class="modal-close" onclick="closeAddBankModal()">&times;</span>
+        <h2 id="lineShopNameTitle" class="lineShopNameTitle">เพิ่มบัญชีธนาคารสำหรับร้าน:</h2>
+        <div class="input-group">
+          <label for="bankAccountName">ชื่อบัญชี:</label>
+          <input type="text" id="bankAccountName" placeholder="กรอกชื่อบัญชี (ไม่ต้องใส่คำหน้าชื่อ)" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="bankAccountNumber">เลขบัญชี:</label>
+          <input type="text" id="bankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
+        </div>
+        <div id="alertMessageAddBank" class="alert-message-Bank"></div>
+        <button class="btn btn-shop-save" onclick="saveNewBank()">บันทึก</button>
+    </div>
+</div>
+
+<div id="editbankModal" class="modal">
+    <div class="edit-bank-modal-content">
+        <span class="modal-close" onclick="closeEditBankModal()">&times;</span>
+        <h2 id="EditBankTitle" class="EditBankTitle">แก้ไขธนาคาร</h2>
+        <div class="input-group">
+          <label for="editBankAccountName">ชื่อบัญชี:</label>
+          <input type="text" id="editBankAccountName" placeholder="กรอกชื่อบัญชี" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="editBankAccountNumber">เลขบัญชี:</label>
+          <input type="text" id="editBankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
+        </div>
+        <div id="alertMessageEditBank" class="alert-message-Bank"></div>
+        <button class="btn btn-shop-save" onclick="saveEditedBank()">บันทึก</button>
+    </div>
+</div>
+</div>
+  </div> <!-- ปิด .main-page -->
+<script src="/views/js/main.js"></script>
+
+<script>
+// ===== ข้อมูลปลอมแทน API =====
+const SHOPS=[
+ {prefix:"ADN",name:"Adengame",status:true,lines:[
+   {linename:"ADENGAME Center",channel_id:"1111115467",tokenError:true},
+   {linename:"ADEN ( บริการ )",channel_id:"2222",tokenError:false}]},
+ {prefix:"JPN",name:"JAPAN",status:true,lines:[{linename:"JAPAN OA",channel_id:"3333"}]},
+];
+window.fetch=async(url)=>{
+ const p=String(url).split("?")[0];
+ if(p==="/api/shops")return{ok:true,json:async()=>({shops:SHOPS})};
+ if(p==="/api/me")return{ok:true,json:async()=>({username:"japan",role:"OWNER",
+   permissions:{sidebar:["main"],shopButtons:["line","edit","delete"],setbotFunctions:[],adminPages:[]},displayedShops:null})};
+ return{ok:true,json:async()=>({})};
+};
+window.alert=(m)=>{window.__lastAlert=m};
+</script>
+<script src="/views/js/main.js"></script>
+<script>
+const wait=(ms=250)=>new Promise(r=>setTimeout(r,ms));
+window.__t=async()=>{
+ await wait(500); const out={};
+ const modal=document.getElementById("shopLinesModal");
+ out["1_ก่อนกดแจ้งเตือน"]={modalเปิดอยู่:getComputedStyle(modal).display!=="none"};
+
+ // จำลองการกดแจ้งเตือน "ไลน์หลุดการเชื่อมต่อ" ของร้าน ADN
+ window.__lineJumpTo={prefix:"ADN",linename:"ADENGAME Center"};
+ renderShopCards(); await wait(200);
+
+ const rows=[...document.querySelectorAll("#line-list .shop-line-item")];
+ const tip=document.querySelector("#line-list .line-status.tip-open");
+ const cs=tip?getComputedStyle(tip,"::after"):null;
+ out["2_หลังกดแจ้งเตือน"]={
+  modalเปิดแล้ว:getComputedStyle(modal).display!=="none",
+  หัวข้อ:document.getElementById("modal-shop-title").textContent.trim().replace(/\s+/g," "),
+  จำนวนไลน์:rows.length,
+  ไลน์ที่ถูกชี้:tip?tip.closest(".shop-line-item").querySelector(".row-name").textContent.trim():null,
+  เป็นไลน์ที่มีปัญหาจริง:!!tip?.classList.contains("line-token-error"),
+  ข้อความลอยแสดงอยู่:cs?{opacity:cs.opacity,visibility:cs.visibility,ข้อความ:tip.dataset.tip}:null,
+  เคลียร์ค่าแล้ว:window.__lineJumpTo===null};
+
+ // ร้านถูกลบไปแล้ว
+ window.__lastAlert=null;
+ window.__lineJumpTo={prefix:"GONE",linename:"x"};
+ renderShopCards(); await wait(150);
+ out["3_ร้านถูกลบไปแล้ว"]={แจ้งเตือน:window.__lastAlert};
+
+ // ไม่ระบุชื่อไลน์ → ต้องหาไลน์ที่มีปัญหาเอง
+ document.querySelectorAll(".line-status.tip-open").forEach(e=>e.classList.remove("tip-open"));
+ window.__lineJumpTo={prefix:"ADN",linename:""};
+ renderShopCards(); await wait(200);
+ const tip2=document.querySelector("#line-list .line-status.tip-open");
+ out["4_ไม่ระบุชื่อไลน์"]={ชี้ไปที่:tip2?tip2.closest(".shop-line-item").querySelector(".row-name").textContent.trim():null,
+   เป็นไลน์ที่มีปัญหา:!!tip2?.classList.contains("line-token-error")};
+ return out;};
+</script></body></html>

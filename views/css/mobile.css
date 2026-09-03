@@ -106,6 +106,7 @@
   .customers-page,
   .permissions-page,
   .prefixes-page,
+  .audit-page,
   .main-page .main-container {
     left: 0;
     right: 0;
@@ -389,6 +390,7 @@
   .customers-page,
   .permissions-page,
   .prefixes-page,
+  .audit-page,
   .main-page .main-container {
     padding: 12px 10px;
   }

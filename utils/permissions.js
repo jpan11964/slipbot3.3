@@ -13,11 +13,12 @@ export const ALL_SHOP_BUTTONS = ["toggle", "line", "bank", "setbot", "edit", "de
 export const ALL_SETBOT_FUNCS = ["withdraw", "textbot", "slipoption", "bonustime", "password"];
 
 // สิทธิ์ผู้จัดการ — หน้าที่ OWNER มอบให้ ADMIN ได้ (จัดการสิทธิ์ / จัดการ prefix)
-export const ALL_ADMIN_PAGES = ["permissions", "prefixes"];
+export const ALL_ADMIN_PAGES = ["permissions", "prefixes", "audit"];
 
 export const ADMIN_PAGE_LABELS = {
   permissions: "จัดการสิทธิ์ผู้ใช้",
   prefixes: "จัดการ Prefix",
+  audit: "ประวัติการใช้งาน",
 };
 
 // label ภาษาไทย ใช้แสดงในหน้าจัดการสิทธิ์

@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="/views/css/permissions.css">
   <link rel="stylesheet" href="/views/css/prefixes.css">
   <link rel="stylesheet" href="/views/css/customers.css">
+  <link rel="stylesheet" href="/views/css/audit.css">
   <!-- ต้องอยู่ท้ายสุด — override layout ของไฟล์ด้านบนสำหรับจอมือถือ -->
   <link rel="stylesheet" href="/views/css/mobile.css">
 </head>
@@ -71,6 +72,10 @@
       <li data-page="permissions" onclick="navigateTo(event, 'permissions')" hidden>
         <i class="bi bi-shield-lock"></i>
         <span>จัดการสิทธิ์ผู้ใช้</span>
+      </li>
+      <li data-page="audit" onclick="navigateTo(event, 'audit')" hidden>
+        <i class="bi bi-clock-history"></i>
+        <span>ประวัติการใช้งาน</span>
       </li>
     </ul>
     <div class="footer">
@@ -236,6 +241,9 @@
             }
             if (page === "customers" && typeof initCustomersPage === "function") {
               initCustomersPage()
+            }
+            if (page === "audit" && typeof initAuditPage === "function") {
+              initAuditPage()
             }
           }
 
@@ -747,9 +755,14 @@
           ? `<div class="noti-times">${(n.times || []).map((t) => `<div>${escapeHtml(formatOccurrence(t))}</div>`).join("")}</div>`
           : ""
 
+        // แจ้งเตือนเรื่องไลน์ → พาไปที่ modal ไลน์ของร้านนั้นโดยตรง ไม่ใช่หน้า log
+        const toLine = n.category === "line_token" && n.prefix
         return `
           <div class="noti-item ${escapeHtml(n.level)}" data-noti-ts="${escapeHtml(n.createdAt)}"
-               title="กดเพื่อดู log ตอนเกิดเหตุ">
+               data-noti-category="${escapeHtml(n.category || "")}"
+               data-noti-prefix="${escapeHtml(n.prefix || "")}"
+               data-noti-linename="${escapeHtml(n.linename || "")}"
+               title="${toLine ? "กดเพื่อไปที่ไลน์ร้านที่มีปัญหา" : "กดเพื่อดู log ตอนเกิดเหตุ"}">
             <i class="bi ${iconOf(n.level)}"></i>
             <div class="noti-item-text">
               <strong>${escapeHtml(n.title)}</strong>
@@ -761,14 +774,34 @@
       }).join("")
     }
 
-    // กดที่ตัวการแจ้งเตือน → ไปหน้า Logs แล้วเลื่อนไปที่เวลานั้น
+    // กดที่ตัวการแจ้งเตือน → พาไปที่ต้นเหตุ
+    //   ไลน์มีปัญหา → หน้าหลัก + เปิด modal ไลน์ของร้านนั้น + ชี้ไลน์ที่หลุด
+    //   เรื่องอื่น    → หน้า Logs แล้วเลื่อนไปที่เวลานั้น
     document.getElementById("notiList")?.addEventListener("click", (e) => {
       if (e.target.closest(".noti-count-btn")) return   // กดปุ่มเกิดซ้ำ — จัดการด้านล่าง
       const item = e.target.closest(".noti-item[data-noti-ts]")
       if (!item) return
 
-      const canSeeLogs = window.__me?.role === "OWNER" ||
-        (window.__me?.permissions?.sidebar || []).includes("logs")
+      const isOwner = window.__me?.role === "OWNER"
+      const sidebar = window.__me?.permissions?.sidebar || []
+      const shopBtns = window.__me?.permissions?.shopButtons || []
+
+      const prefix = item.dataset.notiPrefix
+      if (item.dataset.notiCategory === "line_token" && prefix) {
+        // ต้องมีสิทธิ์เข้าหน้าหลักและเปิดดูไลน์ร้านได้ ไม่งั้นพาไปก็เปิดอะไรไม่ได้
+        const canOpenLine = isOwner || (sidebar.includes("main") && shopBtns.includes("line"))
+        if (canOpenLine) {
+          // renderShopCards() ใน main.js จะมาอ่านค่านี้หลังโหลดข้อมูลร้านเสร็จ
+          // (รอ shopData พร้อมก่อน ไม่งั้นเปิด modal ตอนยังไม่มีข้อมูลจะว่างเปล่า)
+          window.__lineJumpTo = { prefix, linename: item.dataset.notiLinename || "" }
+          closeNotiPanel()
+          closeSidebar()
+          loadPage(null, "main")
+          return
+        }
+      }
+
+      const canSeeLogs = isOwner || sidebar.includes("logs")
       if (!canSeeLogs) return   // ไม่มีสิทธิ์ดู log ก็ไม่ต้องพาไป
 
       window.__logsJumpTo = item.dataset.notiTs
@@ -917,7 +950,7 @@
         closeNotiPanel()
       }
 
-      const managerPages = ["permissions", "prefixes"]
+      const managerPages = ["permissions", "prefixes", "audit"]
       const adminPages = me.permissions?.adminPages || []
       document.querySelectorAll(".sidebar li[data-page]").forEach(li => {
         const page = li.dataset.page
