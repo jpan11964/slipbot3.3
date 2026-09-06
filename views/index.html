@@ -363,6 +363,8 @@
                 setLogsState("loading", "กำลังโหลด log...")
                 logsLoaded = 0
                 logsAllLoaded = false
+                scrollEl.scrollTop = 0
+                logsContainer.closest(".logs-page")?.classList.remove("compact")
               }
               try {
                 const limit = initial ? 200 : 100
@@ -472,7 +474,18 @@
 
             loadLogsHistory(true)
 
+            // บนมือถือแถบค้นหา+ตัวกรองกินจอเกือบครึ่ง เหลือที่ให้ log นิดเดียว
+            // เลื่อนดู log เมื่อไหร่ = ตอนนั้นไม่ได้จะกรองแล้ว → ยุบแถบเก็บไว้ก่อน
+            // เลื่อนกลับบนสุดค่อยกางคืน  ใช้ค่าเข้า/ออกคนละค่า กันกระพริบตอนอยู่แถวเส้นแบ่ง
+            const logsPageEl = logsContainer.closest(".logs-page")
+            function updateLogsCompact() {
+              const y = scrollEl.scrollTop
+              if (y > 40) logsPageEl?.classList.add("compact")
+              else if (y < 10) logsPageEl?.classList.remove("compact")
+            }
+
             scrollEl.addEventListener("scroll", () => {
+              updateLogsCompact()
               if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 40) {
                 loadLogsHistory(false)
               }

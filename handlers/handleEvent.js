@@ -38,17 +38,19 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 
 async function handleEvent(event, client, prefix, linename, accessToken, baseURL) {
-  // บันทึกลูกค้าทุกคนที่ทักมา (ไม่ว่ามีเบอร์หรือไม่ ไม่ซ้ำตาม userId)
-  const customerId = event.source?.userId;
-  if (customerId) recordCustomer({ userId: customerId, prefix, linename, accessToken, client });
-
   const shop = await Shop.findOne({ prefix });
 
   // ตรวจ shop ก่อนอ่านค่า (กัน TypeError ถ้า shop = null)
+  // ปิดบอท = หยุดทุกอย่าง รวมถึงไม่บันทึกลูกค้าใหม่ด้วย
+  // (ต้องเช็คก่อน recordCustomer เสมอ ไม่งั้นร้านที่ปิดอยู่ยังเก็บลูกค้าเพิ่มเรื่อยๆ)
   if (!shop || !shop.status) {
     console.log('ร้านปิดการทำงาน');
     return;
   }
+
+  // บันทึกลูกค้าทุกคนที่ทักมา (ไม่ว่ามีเบอร์หรือไม่ ไม่ซ้ำตาม userId)
+  const customerId = event.source?.userId;
+  if (customerId) recordCustomer({ userId: customerId, prefix, linename, accessToken, client });
 
   const bonusTimeStatus = shop.statusBonusTime;
   const PasswordStatus = shop.statusPassword;

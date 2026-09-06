@@ -76,6 +76,22 @@ export async function clearLineTokenError({ prefix, channelId }) {
 // ---- refresh token ของ 1 line (single-flight ต่อ channel — กันยิงขอรัวๆ) ----
 const inflight = new Map(); // channelId -> Promise<newToken|null>
 
+// ---- ทำเครื่องหมาย "Webhook มีปัญหา" ----
+// ธงแยกจาก tokenError เพราะ startTokenRefreshScheduler() ล้าง tokenError ทุก 4 วัน
+// ถ้าใช้ธงเดียวกัน ไฟแดงของ webhook จะหายไปเองทั้งที่ยังไม่ได้แก้
+export async function setLineWebhookError({ prefix, channelId, bad }) {
+  try {
+    await Shop.updateOne(
+      { prefix, "lines.channel_id": String(channelId) },
+      bad
+        ? { $set: { "lines.$.webhookError": true, "lines.$.webhookErrorAt": new Date() } }
+        : { $set: { "lines.$.webhookError": false }, $unset: { "lines.$.webhookErrorAt": "" } }
+    );
+  } catch (err) {
+    console.error("ทำเครื่องหมาย webhook ไม่สำเร็จ:", err.message);
+  }
+}
+
 export function refreshShopLineToken({ prefix, channelId, secret, staleToken }) {
   const key = String(channelId);
   if (inflight.has(key)) return inflight.get(key);

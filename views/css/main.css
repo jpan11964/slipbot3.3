@@ -857,6 +857,12 @@
   font-size: 11px;
 }
 
+/* ร้านปิดบอทอยู่ — จุดเทา (สีเดียวกับ .inactive .status-dot ของการ์ดร้าน) */
+.main-page .line-off {
+  color: var(--text-light);
+  font-size: 11px;
+}
+
 /* ข้อความลอย — ทำเองเพราะ tooltip ของเบราว์เซอร์ปรับขนาดตัวอักษรไม่ได้ */
 .main-page .line-status::after {
   content: attr(data-tip);
@@ -904,6 +910,90 @@
   opacity: 1;
   visibility: visible;
 }
+
+/* กำลังตรวจสอบไลน์ — ไอคอนหมุนแทนไฟสถานะ */
+.main-page .line-status.checking {
+  color: var(--blue);
+  font-size: 14px;
+}
+
+.main-page .line-status.checking i {
+  animation: line-check-spin 0.7s linear infinite;
+}
+
+@keyframes line-check-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ระหว่างตรวจสอบไม่ต้องขึ้น tooltip ของสถานะเดิม จะได้ไม่สับสน */
+.main-page .line-status.checking::after,
+.main-page .line-status.checking::before {
+  content: none;
+}
+
+/* ===== ข้อความลอยแจ้งผล (ลอยกลางล่างจอ) ===== */
+.line-toast {
+  position: fixed;
+  /* ห้ามใช้ left: 50% + translateX(-50%) — กล่องจะเหลือพื้นที่แค่ครึ่งจอ
+     บนมือถือทำให้แคบมากจนข้อความยาวเป็นแถบสูงเตี้ยๆ
+     ใช้ left/right: 0 + margin auto แทน ได้พื้นที่เต็มจอและยังกึ่งกลางเหมือนเดิม */
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  bottom: 26px;
+  transform: translateY(12px);
+  z-index: 1400;                  /* ต้องเหนือ modal (1300) */
+  display: flex;
+  align-items: flex-start;   /* ไอคอนอยู่บรรทัดแรกเสมอ แม้ข้อความจะหลายบรรทัด */
+  gap: 9px;
+  max-width: min(560px, 88vw);
+  padding: 12px 22px;
+  border-radius: var(--radius-md);   /* มีหลายบรรทัดได้ ทรงแคปซูลจึงไม่เหมาะแล้ว */
+  cursor: pointer;
+  background: var(--navy);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+.line-toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.line-toast i {
+  flex-shrink: 0;
+  font-size: 16px;
+  margin-top: 1px;
+}
+
+.line-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* บรรทัด URL — ตัวเล็กลงและตัดคำได้ ไม่งั้น URL ยาวๆ ดันกล่องจนล้นจอ */
+.line-toast-detail {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+  font-family: 'Consolas', monospace;
+}
+
+.line-toast.ok i { color: #34d399; }
+.line-toast.fail { background: var(--red-dark); }
+.line-toast.fail i { color: #fff; }
 
 /* ปุ่มบันทึกตอนกำลังเชื่อมต่อ LINE — กันกดซ้ำ */
 .main-page .btn-line-save:disabled,
@@ -1115,12 +1205,17 @@
   margin-left: auto;
   margin-right: auto;
   width: fit-content;
-  max-width: 90%;
+  max-width: 100%;
+  box-sizing: border-box;   /* padding + เส้นขอบต้องนับรวมใน max-width ไม่งั้นล้นออกไปอีก */
+  overflow-wrap: anywhere;  /* ข้อความยาวๆ ตัดบรรทัดได้ ไม่ดันกล่องจนล้น */
 }
 
-.main-page .alert-message-Line { min-width: 360px; }
-.main-page .alert-message-Shop { min-width: 200px; }
-.main-page .alert-message-Bank { min-width: 380px; }
+/* min-width ต้องหุ้มด้วย min(..., 100%) เสมอ
+   ไม่งั้นบนจอแคบกล่องจะกว้างเกิน modal แล้วข้อความหลุดออกนอกจอ
+   (max-width ชนะ min-width ไม่ได้ — min-width มาก่อนเสมอในการคำนวณ) */
+.main-page .alert-message-Line { min-width: min(360px, 100%); }
+.main-page .alert-message-Shop { min-width: min(200px, 100%); }
+.main-page .alert-message-Bank { min-width: min(380px, 100%); }
 
 /* Webhook path */
 .main-page .webhook-path {

@@ -49,22 +49,39 @@
       <div class="audit-count" id="auditCount"></div>
     </div>
 
+    <!-- หัวตารางแยกออกมาจากกล่องที่เลื่อน เพื่อให้แถบเลื่อนเริ่มใต้หัวตาราง
+         ทั้งสองตารางใช้ table-layout: fixed + colgroup ชุดเดียวกัน คอลัมน์จึงตรงกันเป๊ะ -->
     <div class="audit-table-wrap">
-      <table class="audit-table">
-        <thead>
-          <tr>
-            <th class="col-time">เวลา</th>
-            <th class="col-user">ผู้ใช้</th>
-            <th class="col-action">การกระทำ</th>
-            <th class="col-target">เป้าหมาย</th>
-            <th class="col-detail">รายละเอียด</th>
-            <th class="col-status">ผล</th>
-          </tr>
-        </thead>
-        <tbody id="auditBody"></tbody>
-      </table>
+      <div class="audit-head" id="auditHead">
+        <table class="audit-table">
+          <colgroup>
+            <col class="w-time"><col class="w-user"><col class="w-action">
+            <col class="w-target"><col class="w-detail"><col class="w-status">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>เวลา</th>
+              <th>ผู้ใช้</th>
+              <th>การกระทำ</th>
+              <th>เป้าหมาย</th>
+              <th>รายละเอียด</th>
+              <th>ผล</th>
+            </tr>
+          </thead>
+        </table>
+      </div>
 
-      <div class="audit-state" id="auditState" hidden></div>
+      <div class="audit-scroll" id="auditScroll">
+        <table class="audit-table">
+          <colgroup>
+            <col class="w-time"><col class="w-user"><col class="w-action">
+            <col class="w-target"><col class="w-detail"><col class="w-status">
+          </colgroup>
+          <tbody id="auditBody"></tbody>
+        </table>
+
+        <div class="audit-state" id="auditState" hidden></div>
+      </div>
     </div>
 
     <div class="audit-more">

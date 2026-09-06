@@ -40,6 +40,35 @@ function initAuditPage() {
   const countEl = document.getElementById("auditCount");
   const stateEl = document.getElementById("auditState");
   const moreEl = document.getElementById("auditMore");
+  const headEl = document.getElementById("auditHead");
+  const scrollEl = document.getElementById("auditScroll");
+
+  // หัวตารางอยู่คนละกล่องกับเนื้อหา (เพื่อให้แถบเลื่อนเริ่มใต้หัวตาราง)
+  // เลื่อนแนวนอนจึงต้องลากหัวตารางตามเอง ไม่งั้นคอลัมน์จะเหลื่อมกันบนจอแคบ
+  const pageEl = document.querySelector(".audit-page");
+
+  // บนมือถือแถบค้นหา+ตัวกรองกินจอเกือบหมด เหลือที่ให้ตารางนิดเดียว
+  // เลื่อนดูรายการเมื่อไหร่ = ตอนนั้นไม่ได้จะกรองแล้ว → ยุบแถบเก็บไว้ก่อน
+  // เลื่อนกลับขึ้นบนสุดค่อยกางคืน (ไม่ต้องมีปุ่มเพิ่ม เดาทางง่ายกว่า)
+  // ใช้ค่าเข้า/ออกคนละค่า กันกระพริบตอนเลื่อนอยู่แถวๆ เส้นแบ่งพอดี
+  function updateCompact() {
+    const y = scrollEl.scrollTop;
+    if (y > 40) pageEl.classList.add("compact");
+    else if (y < 10) pageEl.classList.remove("compact");
+  }
+
+  scrollEl.addEventListener("scroll", () => {
+    headEl.scrollLeft = scrollEl.scrollLeft;
+    updateCompact();
+  });
+
+  // กล่องเนื้อหามีแถบเลื่อนกินความกว้างไป แต่หัวตารางไม่มี
+  // ถ้าไม่เว้นที่ให้เท่ากัน คอลัมน์สุดท้ายของหัวกับเนื้อหาจะเหลื่อมกัน
+  function syncHeadGutter() {
+    const gutter = scrollEl.offsetWidth - scrollEl.clientWidth;
+    headEl.style.paddingRight = gutter + "px";
+  }
+  window.addEventListener("resize", syncHeadGutter);
 
   let loaded = 0;
   let total = 0;
@@ -178,6 +207,8 @@ function initAuditPage() {
     if (initial) {
       bodyEl.replaceChildren();
       loaded = 0;
+      scrollEl.scrollTop = 0;
+      pageEl.classList.remove("compact");   // เริ่มชุดใหม่ = กางแถบตัวกรองคืน
       setState("loading", "กำลังโหลดประวัติ...");
     }
 
@@ -208,6 +239,7 @@ function initAuditPage() {
         );
       }
       moreEl.hidden = loaded >= total;
+      syncHeadGutter();
     } catch (err) {
       console.error("โหลดประวัติการใช้งานล้มเหลว", err);
       if (initial) setState("error", "โหลดประวัติไม่สำเร็จ", "ลองรีเฟรชหน้าอีกครั้ง");

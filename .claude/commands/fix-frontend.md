@@ -39,3 +39,18 @@
    ห้ามใส่ media query ในไฟล์อื่น เพราะจะโดน override ตาม source order
    ถ้าเพิ่มหน้าใหม่ที่ใช้ `position: absolute; left: 260px` ต้องเพิ่ม selector
    ในบล็อก `@media (max-width: 768px)` ของ `mobile.css` ด้วย
+
+## เพิ่มหน้าใหม่ ต้องแตะ 6 จุด (ลืมจุดใดจุดหนึ่งแล้วหน้าจะไม่ขึ้น/เพี้ยน)
+
+1. `views/{name}.html` — markup + `<script src="/views/js/{name}.js">` ท้ายไฟล์
+2. `views/css/{name}.css` — และ **link ใน `views/index.html`** (ก่อน `mobile.css` เสมอ)
+3. `views/js/{name}.js` — ห่อทุกอย่างไว้ใน `init{Name}Page()`
+   (สคริปต์ถูกโหลดครั้งเดียว ของที่ต้องตั้งใหม่ทุกครั้งห้ามวางที่ top-level)
+4. `views/index.html` — เพิ่ม `<li data-page="{name}">` + เรียก `init{Name}Page()` ใน `finalize()`
+5. `utils/permissions.js` — เพิ่ม key ใน `ALL_PAGES`+`PAGE_LABELS`
+   (หรือ `ALL_ADMIN_PAGES`+`ADMIN_PAGE_LABELS` ถ้าเป็นหน้าผู้จัดการ)
+   และ `index.js` route `/page/:name` ต้องอนุญาตชื่อนี้
+6. `views/css/mobile.css` — **เพิ่ม selector ของหน้าใหม่ในบล็อก media query**
+   ทุก container ระดับหน้าใช้ `position: absolute; left: 260px` ถ้าไม่ override เป็น `left: 0`
+   หน้านั้นจะโดน sidebar ทับบนมือถือ
+

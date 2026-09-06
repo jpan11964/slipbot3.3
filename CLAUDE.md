@@ -97,6 +97,7 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 | `Customer.js` | ลูกค้าทุกคนที่ทักเข้ามา (userId, prefix, linename, displayName, phone) |
 | `Notification.js` | การแจ้งเตือนระบบ (TTL 30 วัน) — ใช้ผ่าน `utils/notificationStore.js` |
 | `Log.js` | log การใช้งาน (TTL 3 วัน) — กู้กลับเข้า memory ตอน start |
+| `AuditLog.js` | ประวัติ "ใครกดอะไร" (TTL 90 วัน) — ใช้ผ่าน `utils/auditLog.js` |
 
 ### Shop Schema Key Fields
 ```js
@@ -169,9 +170,26 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 
 > ทุก endpoint ต้องผ่าน `isAuthenticated` + สิทธิ์ sidebar `"notifications"` (OWNER ผ่านเสมอ)
 
+### Audit — ประวัติการใช้งาน
+- `GET /api/audit` — รายการประวัติ (กรองด้วย `q`, `username`, `action`, `from`, `to` + `skip`/`limit`)
+- `GET /api/audit/filters` — ชื่อผู้ใช้ / ประเภทการกระทำ ที่มีอยู่จริง สำหรับ dropdown
+
+> ทั้งสอง endpoint ต้องผ่าน `isAuthenticated` + `requireManage("audit")`
+> (OWNER ผ่านเสมอ / ADMIN ต้องได้รับมอบสิทธิ์ "ประวัติการใช้งาน")
+
 ### LINE Helpers
 - `POST /api/get-access-token` — exchange channelId+secret for access token
 - `POST /api/set-webhook` — set LINE webhook URL
+- `POST /api/check-line` — ตรวจสอบไลน์แบบเต็ม (รับแค่ `{ prefix, channelId }`, secret หยิบจาก DB เอง)
+  ตรวจ 3 ชั้น: ออก token ได้ไหม → webhook ที่ LINE ตั้งไว้ตรงกับของระบบไหม → ให้ LINE ยิงมาทดสอบจริง
+  คืน `{ success, problems: [...], token, webhook: { endpoint, expected, active, matched }, delivery }`
+  แล้วติด/ล้างธง `tokenError` กับ `webhookError` ให้เอง
+- `POST /api/check-shop-lines` — ตรวจทุกไลน์ในร้าน (`{ prefix }`) เรียกอัตโนมัติตอนเปิดสวิตช์บอท
+  คืน `{ success, total, results: [...], bad: [...] }` — `bad` คือเฉพาะไลน์ที่มีปัญหา
+  ตรวจทีละบัญชีตามลำดับ ไม่ยิงพร้อมกัน เพราะแต่ละไลน์ยิง LINE API 3 ครั้ง
+- `POST /api/apply-webhook` — ตั้ง Webhook URL ของระบบไปที่ไลน์นั้นทันที (`{ prefix, channelId }`)
+  ใช้ token ใน DB ก่อน ถ้าใช้ไม่ได้จะออกใหม่จาก channel_id + secret **แล้วบันทึกกลับลง DB**
+  จากนั้น PUT webhook → อ่านกลับมายืนยัน → ให้ LINE ยิงทดสอบ
 
 ---
 
@@ -227,6 +245,7 @@ JSON arrays of response strings per category. One is picked and sent to user.
 - `notificationStore.js` — การแจ้งเตือนระบบ (memory-first + persist ลง DB)
 - `customerStore.js` — บันทึก/อัปเดตลูกค้าใน collection `customers`
 - `permissions.js` — นิยามสิทธิ์ทั้งหมด + `getUserPermissions(role, username)`
+- `auditLog.js` — บันทึก/อ่านประวัติการใช้งาน + แคตตาล็อกชื่อการกระทำ + ตัวกรองข้อมูลลับ
 
 ---
 
@@ -239,6 +258,7 @@ Multi-page SPA loaded via `/page/:name` (authenticated):
 - `settings.html` — **global system settings** (timeLimit, sameQrTimeLimit, maxMessages, etc.)
 - `send-message.html` — push message to LINE users
 - `logs.html` — real-time server logs via SSE `/api/logs`
+- `audit.html` — **ประวัติการใช้งาน** ใครกดปุ่มอะไร กับอะไร เมื่อไหร่ (`js/audit.js`)
 
 ### Frontend JavaScript (`views/js/`)
 - `index.js` — app init, sidebar navigation, active state
@@ -246,6 +266,7 @@ Multi-page SPA loaded via `/page/:name` (authenticated):
 - `dashboard.js` — slip results streaming
 - `setting.js` — system settings form
 - `send-message.js` — user lookup + message sending
+- `audit.js` — ตารางประวัติการใช้งาน + ตัวกรอง + โหลดเพิ่มทีละหน้า
 
 ---
 
@@ -289,6 +310,18 @@ Multi-page SPA loaded via `/page/:name` (authenticated):
     - `startTokenRefreshScheduler()` ต่ออายุอัตโนมัติ **ทุก 4 วัน** (เก็บเวลาใน `settings` key `token-refresh-meta`)
     - `createHealingClient()` จับ 401 → ออก token ใหม่ → retry ใน event เดิม (ลูกค้ายังได้รับการตอบกลับ)
     - ถ้าออก token ไม่ได้ → ตั้ง `lines[].tokenError = true` + ยิงการแจ้งเตือน
+
+13. **ประวัติการใช้งาน (audit log) — ดักที่ middleware ตัวเดียว**
+    `index.js` มี `app.use()` หลัง `express.json()` ที่จับทุก request ซึ่ง**เปลี่ยนแปลงข้อมูล**
+    (POST/PUT/PATCH/DELETE + `/logout`) แล้วบันทึกลง collection `auditLogs`
+    - อ่าน body ตอน `res.on("finish")` ไม่ใช่ตอนเข้า middleware
+      เพราะ multer (อัปโหลดรูป) เพิ่งเติม `req.body` ทีหลัง และตอนนั้นถึงจะรู้ status code
+    - ข้าม `/webhook/*` (ทราฟฟิกจาก LINE ไม่ใช่คนกด) และ path ใน `AUDIT_SKIP`
+    - คนที่ยังไม่ล็อกอินไม่บันทึก **ยกเว้น `/login`** — ต้องเห็นว่าใครพยายามเข้าระบบ
+    - ชื่อไทยของแต่ละการกระทำอยู่ใน `AUDIT_ACTIONS` (`utils/auditLog.js`)
+      route ที่ไม่ได้ลงทะเบียนก็ยังถูกบันทึก แค่ `label` เป็น path ดิบ → ไม่มีอะไรตกหล่น
+    > **ห้ามบันทึก body ทั้งก้อนด้วย `JSON.stringify`** ใช้ `safeSummary()` เท่านั้น
+    > (ตัดคีย์ password / token / secret ทิ้งก่อน)
 
 12. **Log ย้อนหลังสูงสุด 3 วัน — persist ลง MongoDB แล้ว ไม่หายตอน restart**
     - อ่านจาก `logHistory` ใน memory เสมอ (เร็ว) — `MAX_LOGS = 20000` เป็นเพดานกันหน่วยความจำ

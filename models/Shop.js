@@ -9,6 +9,10 @@ const LineSchema = new mongoose.Schema({
     main: Boolean,
     tokenError: Boolean,   // true = ขอ access token ไม่สำเร็จ (ไลน์หลุด/ถูกระงับ)
     tokenErrorAt: Date,    // เวลาที่เจอปัญหาล่าสุด
+    // แยกจาก tokenError เพราะตัวต่ออายุ token ทุก 4 วันจะล้าง tokenError ให้เอง
+    // ถ้าเอา webhook มารวมธงเดียวกัน ไฟแดงจะหายทั้งที่ webhook ยังตั้งผิดอยู่
+    webhookError: Boolean,   // true = Webhook URL ที่ LINE ไม่ตรงกับของระบบ / ยิงมาไม่ถึง
+    webhookErrorAt: Date,
 }, { _id: false });
 
 const ShopSchema = new mongoose.Schema({

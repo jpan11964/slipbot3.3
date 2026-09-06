@@ -75,3 +75,20 @@ handleText.js import helper functions เหล่านี้จาก handleEv
 2. สร้าง `reply/{category}.json` — array of Thai response strings
 3. เพิ่ม case ใน `gptCategorizer.js` categories list
 4. เพิ่ม handler ใน `handleText.js`
+
+## ลำดับด่านใน `handleEvent()` (ห้ามสลับ)
+
+```
+1. Shop.findOne({ prefix })          ← อ่านสดทุกอีเวนต์ ไม่ใช้ cache
+                                        กดสวิตช์เปิด/ปิดบอทจึงมีผลกับข้อความถัดไปทันที
+2. if (!shop || !shop.status) return  ← ปิดบอท = หยุดทุกอย่าง เงียบ ไม่ตอบลูกค้า
+3. recordCustomer()                   ← ต้องอยู่ "หลัง" ข้อ 2 เสมอ
+                                        ไม่งั้นร้านที่ปิดอยู่ยังเก็บลูกค้าใหม่เรื่อยๆ
+4. if (event.timestamp < programStartTime) return
+                                      ← ข้อความช่วง server ดับ ถูกทิ้งหลัง restart
+5. text  → ต้องมี shop.statusBot === true ถึงจะเข้า handleTextEvent
+   image → เข้า handleImageEvent เลย (ไม่มีด่านสถานะเพิ่ม)
+```
+
+`statusBonusTime` / `statusPassword` ส่งต่อเข้า `handleTextEvent` เพื่อคุมเฉพาะหมวดนั้น
+

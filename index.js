@@ -28,7 +28,7 @@ import Shop from "./models/Shop.js";
 import LogModel from "./models/Log.js";
 import { recordAudit, buildAuditEntry, listAudit, auditFilterOptions, AUDIT_SKIP, flushAudit } from "./utils/auditLog.js";
 import { checkAndSavePhoneNumber, checkAndUpdatePhoneNumber } from "./utils/savePhoneNumber.js";
-import { createHealingClient, startTokenRefreshScheduler, markLineTokenError, clearLineTokenError } from "./utils/lineToken.js";
+import { createHealingClient, startTokenRefreshScheduler, markLineTokenError, clearLineTokenError, issueChannelToken, setLineWebhookError } from "./utils/lineToken.js";
 import { addNotification, listNotifications, unreadCount, markAllRead, clearNotifications, loadNotificationsFromDB, onNotification } from "./utils/notificationStore.js";
 import multer from "multer";
 
@@ -1830,6 +1830,255 @@ app.post("/api/get-access-token", async (req, res) => {
   } catch (error) {
     console.error("❌ Error in /api/get-access-token:", error);
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+});
+
+// ===== ตรวจสอบไลน์ =====
+// ขอ token อย่างเดียวไม่พอ — token ออกได้แต่ webhook ตั้งผิด บอทก็ไม่ได้รับข้อความอยู่ดี
+// จึงตรวจ 3 ชั้น: ออก token ได้ไหม → webhook ชี้มาถูกที่ไหม → LINE ยิงมาแล้วถึงจริงไหม
+//
+// แยกเป็นฟังก์ชันเพราะใช้ 2 ที่ — กดตรวจทีละไลน์ และตรวจยกร้านตอนเปิดสวิตช์บอท
+// ฟังก์ชันนี้เขียนธง tokenError / webhookError ลง DB ให้เรียบร้อยแล้ว
+async function checkLineAccount(prefix, line) {
+  const channelId = String(line.channel_id);
+  const linename = line.linename || `channel ...${channelId.slice(-4)}`;
+  const expected = `${baseURL}/webhook/${prefix}/${channelId.slice(-4)}.bot`;
+  const result = { channelId, linename, token: {}, webhook: { expected }, delivery: {}, problems: [] };
+
+  if (!line.secret_token) {
+    result.token.ok = false;
+    result.problems.push("ยังไม่มี Secret Token");
+    result.flags = { tokenError: true, webhookError: line.webhookError === true };
+    await markLineTokenError({ prefix, channelId, linename, reason: "ไม่มี secret token" });
+    return result;
+  }
+
+  // ---- 1) ออก access token ----
+  let accessToken;
+  try {
+    ({ access_token: accessToken } = await issueChannelToken(channelId, line.secret_token));
+    result.token.ok = true;
+    await clearLineTokenError({ prefix, channelId });
+  } catch (err) {
+    result.token = { ok: false, message: err.message };
+    result.problems.push("ขอ access token ไม่สำเร็จ — Channel ID หรือ Secret Token ไม่ถูกต้อง");
+    await markLineTokenError({ prefix, channelId, linename, reason: err.message });
+    result.flags = { tokenError: true, webhookError: line.webhookError === true };
+    return result;   // ไม่มี token ก็ตรวจ webhook ต่อไม่ได้
+  }
+
+  // ---- 2) webhook ที่ตั้งไว้ฝั่ง LINE ตรงกับของเราไหม ----
+  try {
+    const epRes = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const ep = await epRes.json().catch(() => ({}));
+
+    if (!epRes.ok) {
+      result.webhook.ok = false;
+      result.problems.push(`อ่านค่า Webhook จาก LINE ไม่ได้ (${ep.message || epRes.status})`);
+    } else {
+      result.webhook.endpoint = ep.endpoint || "";
+      result.webhook.active = ep.active === true;
+      result.webhook.matched = String(ep.endpoint || "") === expected;
+      result.webhook.ok = result.webhook.matched && result.webhook.active;
+
+      if (!ep.endpoint) result.problems.push("ยังไม่ได้ตั้ง Webhook URL ที่ฝั่ง LINE");
+      else if (!result.webhook.matched) result.problems.push("Webhook URL ไม่ตรงกับของระบบ");
+      if (ep.endpoint && ep.active === false) result.problems.push('ปิด "Use webhook" อยู่ที่ฝั่ง LINE');
+    }
+  } catch (err) {
+    result.webhook.ok = false;
+    result.problems.push(`ตรวจ Webhook ไม่สำเร็จ: ${err.message}`);
+  }
+
+  // ---- 3) ให้ LINE ลองยิงมาจริง (ตรวจเฉพาะตอน URL ตรงแล้ว) ----
+  if (result.webhook.matched) {
+    try {
+      const testRes = await fetch("https://api.line.me/v2/bot/channel/webhook/test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: expected }),
+      });
+      const t = await testRes.json().catch(() => ({}));
+      result.delivery = { ok: t.success === true, statusCode: t.statusCode, reason: t.reason, detail: t.detail };
+      if (t.success !== true) {
+        result.problems.push(`LINE ส่งมาที่ Webhook ไม่ถึง (${t.detail || t.reason || testRes.status})`);
+      }
+    } catch (err) {
+      result.delivery = { ok: false, detail: err.message };
+      result.problems.push(`ทดสอบส่งไป Webhook ไม่สำเร็จ: ${err.message}`);
+    }
+  }
+
+  const webhookBad = result.problems.length > 0;
+  await setLineWebhookError({ prefix, channelId, bad: webhookBad });
+  result.flags = { tokenError: false, webhookError: webhookBad };
+  return result;
+}
+
+// ตรวจทีละไลน์ (กดจากเมนู Kebab)
+// รับแค่ prefix + channelId แล้วไปหยิบ secret จาก DB เอง
+// (ไม่ให้ secret วิ่งผ่าน client โดยไม่จำเป็น)
+app.post("/api/check-line", isAuthenticated, async (req, res) => {
+  const { prefix, channelId } = req.body || {};
+  if (!prefix || !channelId) {
+    return res.status(400).json({ success: false, message: "ต้องระบุ prefix และ channelId" });
+  }
+
+  try {
+    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
+    const line = shop?.lines?.find((l) => String(l.channel_id) === String(channelId));
+    if (!line) return res.status(404).json({ success: false, message: "ไม่พบบัญชีไลน์นี้ในร้าน" });
+
+    const r = await checkLineAccount(prefix, line);
+    res.json({ success: r.problems.length === 0, ...r });
+  } catch (err) {
+    console.error("❌ check-line error:", err);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดขณะตรวจสอบ" });
+  }
+});
+
+// ตรวจทุกไลน์ในร้าน — เรียกอัตโนมัติตอนเปิดสวิตช์ทำงานบอท
+// ตรวจทีละบัญชีตามลำดับ ไม่ยิงพร้อมกัน เพราะแต่ละไลน์ยิง LINE API 3 ครั้ง
+app.post("/api/check-shop-lines", isAuthenticated, async (req, res) => {
+  const { prefix } = req.body || {};
+  if (!prefix) return res.status(400).json({ success: false, message: "ต้องระบุ prefix" });
+
+  try {
+    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
+    if (!shop) return res.status(404).json({ success: false, message: "ไม่พบร้านนี้" });
+
+    const lines = shop.lines || [];
+    const results = [];
+    for (const line of lines) {
+      if (!line?.channel_id) continue;
+      results.push(await checkLineAccount(prefix, line));
+    }
+
+    const bad = results.filter((r) => r.problems.length > 0);
+    res.json({
+      success: bad.length === 0,
+      total: results.length,
+      results,
+      bad,   // เฉพาะไลน์ที่มีปัญหา — หน้าเว็บเอาไปขึ้นข้อความได้เลย
+    });
+  } catch (err) {
+    console.error("❌ check-shop-lines error:", err);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดขณะตรวจสอบไลน์ของร้าน" });
+  }
+});
+
+// ===== ตั้ง Webhook URL ของระบบไปที่ไลน์นั้นทันที =====
+// ต่างจาก /api/set-webhook ตรงที่ไม่ต้องส่ง accessToken มาจาก client
+// ใช้ token ที่เก็บไว้ใน DB ก่อน ถ้าใช้ไม่ได้แล้วค่อยออกใหม่จาก channel_id + secret
+// แล้วบันทึก token ใหม่กลับลง DB ด้วย (ไลน์ที่ token หมดอายุจึงกลับมาใช้ได้ในคลิกเดียว)
+app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
+  const { prefix, channelId } = req.body || {};
+  if (!prefix || !channelId) {
+    return res.status(400).json({ success: false, message: "ต้องระบุ prefix และ channelId" });
+  }
+
+  try {
+    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
+    const line = shop?.lines?.find((l) => String(l.channel_id) === String(channelId));
+    if (!line) return res.status(404).json({ success: false, message: "ไม่พบบัญชีไลน์นี้ในร้าน" });
+    if (!line.secret_token) {
+      return res.json({ success: false, message: "ไลน์นี้ยังไม่มี Secret Token" });
+    }
+
+    const linename = line.linename || `channel ...${String(channelId).slice(-4)}`;
+    const expected = `${baseURL}/webhook/${prefix}/${String(channelId).slice(-4)}.bot`;
+
+    // ---- 1) ตรวจ token ที่มีอยู่ใน DB ก่อน ----
+    let accessToken = line.access_token || "";
+    let tokenSource = "เดิม";
+    let valid = false;
+
+    if (accessToken) {
+      try {
+        const infoRes = await fetch("https://api.line.me/v2/bot/info", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        valid = infoRes.ok;
+      } catch { valid = false; }
+    }
+
+    // ---- 2) ใช้ไม่ได้ → ออกใหม่แล้วบันทึกลง DB ----
+    if (!valid) {
+      try {
+        ({ access_token: accessToken } = await issueChannelToken(channelId, line.secret_token));
+        await Shop.updateOne(
+          { prefix, "lines.channel_id": String(channelId) },
+          { $set: { "lines.$.access_token": accessToken } }
+        );
+        await clearLineTokenError({ prefix, channelId });
+        tokenSource = "ออกใหม่";
+      } catch (err) {
+        await markLineTokenError({ prefix, channelId, linename, reason: err.message });
+        return res.json({
+          success: false,
+          linename,
+          message: "ขอ access token ไม่สำเร็จ — Channel ID หรือ Secret Token ไม่ถูกต้อง",
+          flags: { tokenError: true, webhookError: line.webhookError === true },
+        });
+      }
+    }
+
+    // ---- 3) ตั้ง Webhook URL ----
+    const putRes = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: expected }),
+    });
+    if (!putRes.ok) {
+      const err = await putRes.json().catch(() => ({}));
+      await setLineWebhookError({ prefix, channelId, bad: true });
+      return res.json({
+        success: false,
+        linename,
+        webhook: { expected },
+        message: `ตั้ง Webhook ไม่สำเร็จ: ${err.message || putRes.status}`,
+        flags: { tokenError: false, webhookError: true },
+      });
+    }
+
+    // ---- 4) อ่านกลับมายืนยัน + ให้ LINE ลองยิงมาจริง ----
+    const result = { tokenSource, webhook: { expected }, delivery: {} };
+    try {
+      const epRes = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const ep = await epRes.json().catch(() => ({}));
+      result.webhook.endpoint = ep.endpoint || "";
+      result.webhook.active = ep.active === true;
+      result.webhook.matched = String(ep.endpoint || "") === expected;
+    } catch { /* อ่านกลับไม่ได้ก็ไม่เป็นไร ตั้งไปแล้ว */ }
+
+    try {
+      const testRes = await fetch("https://api.line.me/v2/bot/channel/webhook/test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: expected }),
+      });
+      const t = await testRes.json().catch(() => ({}));
+      result.delivery = { ok: t.success === true, detail: t.detail || t.reason };
+    } catch (err) {
+      result.delivery = { ok: false, detail: err.message };
+    }
+
+    // ตั้งสำเร็จและ LINE ยิงมาถึงจริงเท่านั้นถึงจะถือว่าหายดี
+    const stillBad = result.webhook.matched === false || result.delivery.ok === false;
+    await setLineWebhookError({ prefix, channelId, bad: stillBad });
+
+    restartWebhooks();   // token อาจเปลี่ยน → รีเฟรช cache
+    res.json({
+      success: true, linename, ...result,
+      flags: { tokenError: false, webhookError: stillBad },
+    });
+  } catch (err) {
+    console.error("❌ apply-webhook error:", err);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดขณะตั้ง Webhook" });
   }
 });
 

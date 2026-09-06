@@ -66,21 +66,297 @@ document.addEventListener("click", (e) => {
 });
 
 function renderLineItem(prefix, line, index) {
-    // ไฟสถานะใช้ช่องเดียวกัน — แดงเมื่อ token มีปัญหา / เขียวเมื่อไลน์ยังทำงานปกติ
+    // ไฟสถานะใช้ช่องเดียวกัน — แดง = มีปัญหา / เทา = ร้านปิดบอทอยู่ / เขียว = ทำงานปกติ
     // แยกออกมานอก .row-name เพื่อให้ทุกแถวเรียงตรงกัน และไม่โดน ... ตัดไอคอนทิ้ง
-    const statusIcon = line.tokenError
-        ? `<span class="line-status line-token-error" data-tip="ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"><i class="bi bi-exclamation-circle-fill"></i></span>`
+    //
+    // แดงมาก่อนเสมอ แม้ร้านจะปิดบอทอยู่ — ปัญหาต้องไปแก้ไม่ว่าบอทจะเปิดหรือปิด
+    // (เครื่องหมายนี้ต้องอยู่จนกว่าจะแก้สำเร็จหรือลบไลน์ทิ้ง)
+    const shopOff = shopData.find(s => s.prefix === prefix)?.status === false;
+
+    // แดงได้ 2 สาเหตุ — token ใช้ไม่ได้ หรือ Webhook ตั้งผิด/ยิงมาไม่ถึง
+    // ข้อความบอกให้ตรงสาเหตุ จะได้รู้ว่าต้องกดเมนูไหนแก้
+    const problemTip = line.tokenError
+        ? "ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"
+        // ห้ามใช้ " ในข้อความ — มันไปปิด attribute data-tip="..." ทำให้ tooltip ขาดกลางคัน
+        : "Webhook URL ไม่ถูกต้อง กดเมนู 'ตั้ง Webhook URL' เพื่อแก้";
+
+    const statusIcon = (line.tokenError || line.webhookError)
+        ? `<span class="line-status line-token-error" data-tip="${problemTip}"><i class="bi bi-exclamation-circle-fill"></i></span>`
+        : shopOff
+        ? `<span class="line-status line-off" data-tip="ร้านนี้ปิดบอทอยู่ ไลน์จึงยังไม่ทำงาน"><i class="bi bi-circle-fill"></i></span>`
         : `<span class="line-status line-ok" data-tip="ไลน์ทำงานปกติ"><i class="bi bi-circle-fill"></i></span>`;
     return `
         <div class="shop-line-item">
             ${statusIcon}
             <span class="row-name" title="${line.linename}">${line.linename}</span>
             ${renderRowMenu([
+                { label: "ตรวจสอบไลน์", icon: "bi-arrow-repeat", action: `checkLine('${prefix}', ${index})` },
+                { label: "ตั้ง Webhook URL", icon: "bi-link-45deg", action: `applyWebhook('${prefix}', ${index})` },
                 { label: "แก้ไข", icon: "bi-pencil", action: `editLine('${prefix}', ${index})` },
                 { label: "ลบไลน์นี้", icon: "bi-trash", danger: true, action: `deleteLine('${prefix}', ${index})` },
             ])}
         </div>
     `;
+}
+
+// ===== เปิดสวิตช์บอทแล้วตรวจไลน์ทั้งร้านให้อัตโนมัติ =====
+// เจอปัญหา → เปิด modal ไลน์ร้านนั้นให้เลย พร้อมบอกว่าไลน์ไหนเป็นอะไร
+// ไม่ await ใน handleToggle เพราะสวิตช์ต้องตอบสนองทันที ไม่ต้องรอ LINE API
+async function verifyShopLines(prefix) {
+    const shop = shopData.find(s => s.prefix === prefix);
+    const lineCount = shop?.lines?.length || 0;
+    if (!lineCount) return;
+
+    showLineToast(`กำลังตรวจสอบไลน์ของร้าน ${shop.name} (${lineCount} บัญชี)...`, true);
+
+    try {
+        const res = await fetch("/api/check-shop-lines", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefix }),
+        });
+        const data = await res.json();
+
+        // เอาธงที่ได้กลับมาทาลง cache ก่อน ไฟจะได้ถูกต้องทันทีที่ modal เปิด
+        (data.results || []).forEach(r => {
+            const line = shop.lines.find(l => String(l.channel_id) === String(r.channelId));
+            if (line && r.flags) Object.assign(line, r.flags);
+        });
+
+        if (data.success) {
+            showLineToast(`ไลน์ของร้าน ${shop.name} ใช้งานได้ครบทุกบัญชี`, true);
+            return;
+        }
+
+        // มีปัญหา → เปิด modal ให้เห็นว่าไลน์ไหนแดง แล้วสรุปปัญหาในข้อความลอย
+        const bad = data.bad || [];
+        openShopLinesModal(prefix);
+        flashLineTooltip(bad[0]?.linename);   // กางข้อความชี้ไลน์ตัวแรกที่เสียให้เห็นเลย
+
+        // แต่ละไลน์ที่มีปัญหาแยกเป็นบรรทัดของตัวเอง อ่านง่ายกว่ายัดรวมบรรทัดเดียว
+        showLineToast(
+            `ร้าน ${shop.name} มีไลน์ที่ใช้งานไม่ได้ ${bad.length} จาก ${data.total} บัญชี`,
+            false,
+            {
+                detailLines: bad.map(r => `${r.linename}: ${r.problems.join(" · ")}`),
+                // ไลน์เดียวถึงจะโชว์ URL ได้ ไม่งั้นรกเกิน
+                webhook: bad.length === 1 ? bad[0].webhook : undefined,
+            },
+        );
+    } catch (err) {
+        console.error("ตรวจสอบไลน์ของร้านล้มเหลว:", err);
+        showLineToast("ตรวจสอบไลน์ของร้านไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", false);
+    }
+}
+
+// ===== ตรวจสอบว่าไลน์ยังเชื่อมต่ออยู่ไหม =====
+// ใช้หลักการเดียวกับตอนเพิ่ม/บันทึกไลน์ใหม่ — ขอ access token ใหม่จาก LINE
+// ขอได้ = ยังใช้งานได้ / ขอไม่ได้ = ไลน์มีปัญหา
+// (/api/get-access-token ตั้งหรือล้าง tokenError ให้เองแล้ว ไฟสถานะจึงอัปเดตตาม)
+const lineChecking = new Set();
+
+async function checkLine(prefix, index) {
+    closeAllRowMenus();
+
+    const key = `${prefix}:${index}`;
+    if (lineChecking.has(key)) return;   // กันกดรัว
+
+    const shop = shopData.find(s => s.prefix === prefix);
+    const line = shop?.lines?.[index];
+    if (!line) return showLineToast("ไม่พบบัญชีไลน์นี้แล้ว", false);
+    if (!line.channel_id) {
+        return showLineToast("ไลน์นี้ยังไม่มี Channel ID — กรุณาแก้ไขก่อน", false);
+    }
+
+    lineChecking.add(key);
+    const icon = document.querySelectorAll("#line-list .shop-line-item")[index]
+        ?.querySelector(".line-status i");
+    const iconClass = icon?.className;
+    if (icon) {
+        icon.className = "bi bi-arrow-repeat";
+        icon.parentElement.classList.add("checking");
+    }
+
+    try {
+        // secret ไม่ต้องส่งไป — backend หยิบจาก DB เอง
+        const res = await fetch("/api/check-line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefix, channelId: line.channel_id }),
+        });
+        const data = await res.json();
+        applyLineFlags(prefix, index, data.flags);   // ไฟเปลี่ยนสีพร้อมข้อความ ไม่ต้องรอ API รอบสอง
+
+        if (data.success) {
+            showLineToast(`"${line.linename}" ใช้งานได้ปกติ — token และ Webhook ถูกต้อง`, true);
+        } else {
+            flashLineTooltip(line.linename);   // ชี้ให้เห็นว่าเป็นไลน์ไหน
+            // รวมทุกปัญหาที่เจอไว้ในข้อความเดียว จะได้ไม่ต้องกดตรวจซ้ำหลายรอบ
+            const why = (data.problems || []).join(" · ") || data.message || "ตรวจสอบไม่ผ่าน";
+            showLineToast(`"${line.linename}" มีปัญหา — ${why}`, false, data);
+        }
+    } catch (err) {
+        console.error("ตรวจสอบไลน์ล้มเหลว:", err);
+        showLineToast("ตรวจสอบไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", false);
+    } finally {
+        lineChecking.delete(key);
+        if (icon && icon.isConnected) {
+            icon.className = iconClass;
+            icon.parentElement.classList.remove("checking");
+        }
+        // ดึงสถานะล่าสุดมาวาดใหม่ ไฟเขียว/แดงจะอัปเดตเอง
+        await loadShopLines(prefix);
+    }
+}
+
+// เอาธงที่ backend ส่งกลับมาทาลง shopData แล้ววาดใหม่ทันที
+// (ก่อนหน้านี้รอ loadShopLines() ยิง /api/shops ใหม่ ไฟเลยเปลี่ยนช้ากว่าข้อความลอยราวครึ่งวินาที)
+function applyLineFlags(prefix, index, flags) {
+    if (!flags) return;
+    const line = shopData.find(s => s.prefix === prefix)?.lines?.[index];
+    if (!line) return;
+
+    if (typeof flags.tokenError === "boolean") line.tokenError = flags.tokenError;
+    if (typeof flags.webhookError === "boolean") line.webhookError = flags.webhookError;
+    renderLineList(prefix);
+}
+
+// ===== ตั้ง Webhook URL ของระบบไปที่ไลน์นั้นทันที =====
+// backend จะตรวจ access token ที่เก็บไว้ก่อน ถ้าใช้ไม่ได้จะออกใหม่จาก channel_id + secret
+// แล้วบันทึกกลับลง DB ให้เอง — ไลน์ที่ token หมดอายุจึงกลับมาใช้ได้ในคลิกเดียว
+async function applyWebhook(prefix, index) {
+    closeAllRowMenus();
+
+    const key = `${prefix}:${index}:webhook`;
+    if (lineChecking.has(key)) return;
+
+    const shop = shopData.find(s => s.prefix === prefix);
+    const line = shop?.lines?.[index];
+    if (!line) return showLineToast("ไม่พบบัญชีไลน์นี้แล้ว", false);
+    if (!line.channel_id) return showLineToast("ไลน์นี้ยังไม่มี Channel ID — กรุณาแก้ไขก่อน", false);
+
+    if (!confirm(`ตั้ง Webhook URL ของระบบไปที่ "${line.linename}" ใช่ไหม?
+
+ค่าเดิมที่ตั้งไว้ฝั่ง LINE จะถูกเขียนทับ`)) return;
+
+    lineChecking.add(key);
+    const icon = document.querySelectorAll("#line-list .shop-line-item")[index]
+        ?.querySelector(".line-status i");
+    const iconClass = icon?.className;
+    if (icon) {
+        icon.className = "bi bi-arrow-repeat";
+        icon.parentElement.classList.add("checking");
+    }
+
+    try {
+        const res = await fetch("/api/apply-webhook", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefix, channelId: line.channel_id }),
+        });
+        const data = await res.json();
+        applyLineFlags(prefix, index, data.flags);   // ไฟเปลี่ยนสีพร้อมข้อความ ไม่ต้องรอ API รอบสอง
+
+        if (!data.success) {
+            flashLineTooltip(line.linename);
+            showLineToast(`ตั้ง Webhook ให้ "${line.linename}" ไม่สำเร็จ — ${data.message || "ไม่ทราบสาเหตุ"}`, false, data);
+        } else if (data.delivery?.ok === false) {
+            // ตั้งสำเร็จแต่ LINE ยิงมาไม่ถึง = URL ปลายทางยังเข้าไม่ได้ (เช่น ngrok ปิดอยู่)
+            showLineToast(
+                `ตั้ง Webhook ให้ "${line.linename}" แล้ว แต่ LINE ยิงมาไม่ถึง — ${data.delivery.detail || "ตรวจสอบว่าเซิร์ฟเวอร์เข้าถึงได้จากภายนอก"}`,
+                false, data);
+        } else {
+            const extra = data.tokenSource === "ออกใหม่" ? " (ออก access token ใหม่ให้ด้วย)" : "";
+            showLineToast(`ตั้ง Webhook ให้ "${line.linename}" เรียบร้อย${extra}`, true);
+        }
+    } catch (err) {
+        console.error("ตั้ง Webhook ล้มเหลว:", err);
+        showLineToast("ตั้ง Webhook ไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", false);
+    } finally {
+        lineChecking.delete(key);
+        if (icon && icon.isConnected) {
+            icon.className = iconClass;
+            icon.parentElement.classList.remove("checking");
+        }
+        await loadShopLines(prefix);
+    }
+}
+
+// ข้อความลอยกลางล่างจอ — ใช้แจ้งผลที่ไม่ควรขัดจังหวะด้วย alert()
+// result = ผลตรวจจาก /api/check-line (ไม่บังคับ) ใช้แสดง URL ที่ตั้งผิดให้เห็นกับตา
+let lineToastTimer = null;
+function showLineToast(message, ok = true, result = null) {
+    let el = document.getElementById("lineToast");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "lineToast";
+        el.onclick = () => el.classList.remove("show");   // กดเพื่อปิดก่อนเวลาได้
+        document.body.appendChild(el);
+    }
+
+    el.className = "line-toast " + (ok ? "ok" : "fail");
+    el.replaceChildren();
+
+    const icon = document.createElement("i");
+    icon.className = "bi " + (ok ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill");
+    el.appendChild(icon);
+
+    const body = document.createElement("div");
+    body.className = "line-toast-body";
+    const main = document.createElement("span");
+    main.textContent = message;
+    body.appendChild(main);
+
+    let hasDetail = false;
+
+    // รายการปัญหาแยกบรรทัด (ใช้ตอนตรวจทั้งร้านแล้วเจอหลายไลน์)
+    for (const text of result?.detailLines || []) {
+        const d = document.createElement("div");
+        d.className = "line-toast-detail";
+        d.textContent = "• " + text;
+        body.appendChild(d);
+        hasDetail = true;
+    }
+
+    // webhook ตั้งผิด — โชว์ทั้งของที่ LINE ตั้งไว้และของที่ควรเป็น จะได้ก๊อปไปแก้ได้เลย
+    const wh = result?.webhook;
+    if (wh && wh.matched === false) {
+        const rows = [
+            ["LINE ตั้งไว้", wh.endpoint || "(ยังไม่ได้ตั้ง)"],
+            ["ที่ถูกต้อง", wh.expected || "-"],
+        ];
+        for (const [label, value] of rows) {
+            const d = document.createElement("div");
+            d.className = "line-toast-detail";
+            d.textContent = `${label}: ${value}`;
+            body.appendChild(d);
+            hasDetail = true;
+        }
+    }
+    el.appendChild(body);
+
+    // บังคับให้เบราว์เซอร์คำนวณ layout ก่อน ค่อยใส่ .show — ไม่งั้น transition ไม่ทำงาน
+    // ใช้ reflow ไม่ใช่ requestAnimationFrame เพราะ rAF ไม่ทำงานตอนแท็บถูกซ่อน
+    // (แท็บพื้นหลังจะไม่เห็น toast เลย)
+    void el.offsetWidth;
+    el.classList.add("show");
+    clearTimeout(lineToastTimer);
+    // ข้อความที่มี URL ให้อ่าน ต้องค้างนานกว่าปกติ
+    lineToastTimer = setTimeout(() => el.classList.remove("show"), hasDetail ? 12000 : ok ? 4000 : 7000);
+}
+
+// วาดรายการไลน์จาก shopData (cache) — ใช้ตอนเปิด modal และตอนอัปเดตสถานะทันทีหลังกดปุ่ม
+// แยกจาก loadShopLines() ที่ต้องรอ API ตอบก่อน
+function renderLineList(prefix) {
+    const lineListElement = document.getElementById("line-list");
+    if (!lineListElement) return;
+
+    const shop = shopData.find(s => s.prefix === prefix);
+    const lines = shop?.lines || [];
+
+    lineListElement.innerHTML = lines.length
+        ? lines.map((line, index) => renderLineItem(prefix, line, index)).join("")
+        : "<p>ไม่มีบัญชี LINE</p>";
 }
 
 function openShopLinesModal(prefix) {
@@ -100,15 +376,7 @@ function openShopLinesModal(prefix) {
             รายการ LINE ร้าน ${shop.name}
         `;
 
-    // แสดงบัญชี LINE
-    if (!shop.lines || shop.lines.length === 0) {
-        lineListElement.innerHTML = "<p>ไม่มีบัญชี LINE</p>";
-    } else {
-        lineListElement.innerHTML = shop.lines
-            .map((line, index) => renderLineItem(prefix, line, index))
-            .join("");
-    }
-
+    renderLineList(prefix);
     modal.style.display = "flex";
 
     // shopData เป็น cache ที่โหลดตอนเปิดหน้า — ดึงสดจาก API ซ้ำ
@@ -304,9 +572,18 @@ async function loadShopLines(prefix) {
             return;
         }
 
+        // อัปเดต cache ด้วย — เมนูของแต่ละแถวอ้าง index ของ shopData
+        // ถ้าไม่ sync ปุ่มแก้ไข/ลบ/ตรวจสอบ จะทำงานกับข้อมูลเก่า
+        const cached = shopData.find(s => s.prefix === prefix);
+        if (cached) {
+            cached.lines = shop.lines;
+            cached.status = shop.status;   // ไฟสถานะไลน์อิงสถานะเปิด/ปิดบอทของร้าน
+        }
+
         lineListElement.innerHTML = shop.lines
             .map((line, index) => renderLineItem(prefix, line, index))
             .join("");
+        applyLineHighlight(true);   // วาดทับของเดิมไปแล้ว ต้องทาไฮไลต์ใหม่ (รอบสุดท้าย)
         console.log("โหลด LINE สดจาก API สำเร็จ:", shop.lines);
     } catch (err) {
         console.error("❌ โหลด LINE จาก API ไม่สำเร็จ:", err);
@@ -918,10 +1195,27 @@ function renderShopCards() {
 }
 
 // ชี้ให้เห็นว่าไลน์ไหนมีปัญหา — กางข้อความลอยค้างไว้สักพักโดยไม่ต้องเอาเมาส์ไปชี้
+//
+// openShopLinesModal() วาดรายการจาก cache ก่อน แล้ว loadShopLines() ยิง API
+// มาวาดทับอีกรอบ — ถ้าใส่ class ครั้งเดียวจะโดนล้างทิ้ง จึงจำไว้แล้วทาซ้ำหลังวาดใหม่
+let pendingLineHighlight = null;
+let lineHighlightTimer = null;
+
 function flashLineTooltip(linename) {
+    pendingLineHighlight = linename ?? "";
+    applyLineHighlight();
+    // ถ้ารายการสดยังมาไม่ถึง ให้เลิกรอหลัง 10 วิ จะได้ไม่ค้างไปทาให้ครั้งถัดไป
+    clearTimeout(lineHighlightTimer);
+    lineHighlightTimer = setTimeout(() => { pendingLineHighlight = null; }, 10000);
+}
+
+// final = true เมื่อเรียกจากรายการสดที่โหลดเสร็จแล้ว (ไม่มีการวาดทับอีก) จึงเลิกรอได้
+function applyLineHighlight(final = false) {
+    if (pendingLineHighlight === null) return;
+
     const rows = [...document.querySelectorAll("#line-list .shop-line-item")];
-    const row = linename
-        ? rows.find(r => r.querySelector(".row-name")?.textContent.trim() === linename.trim())
+    const row = pendingLineHighlight
+        ? rows.find(r => r.querySelector(".row-name")?.textContent.trim() === pendingLineHighlight.trim())
         : rows.find(r => r.querySelector(".line-token-error"));
     const status = row?.querySelector(".line-status");
     if (!status) return;
@@ -929,6 +1223,12 @@ function flashLineTooltip(linename) {
     row.scrollIntoView({ block: "center", behavior: "smooth" });
     status.classList.add("tip-open");
     setTimeout(() => status.classList.remove("tip-open"), 6000);
+
+    // ยังไม่ final = รายการสดกำลังจะมาวาดทับ ต้องเก็บค่าไว้ทาซ้ำ
+    if (final) {
+        pendingLineHighlight = null;
+        clearTimeout(lineHighlightTimer);
+    }
 }
 
 async function loadShopsAndRender() {
@@ -1331,6 +1631,10 @@ async function handleToggle(prefix, checkbox) {
                 shopInfo.classList.toggle("active", newStatus);
                 shopInfo.classList.toggle("inactive", !newStatus);
             }
+
+            // เปิดบอทแล้วต้องมั่นใจว่าไลน์ในร้านใช้งานได้จริง — ตรวจให้เลยไม่ต้องรอผู้ใช้กดเอง
+            // (ตอนปิดไม่ต้องตรวจ ไม่มีอะไรต้องทำงานอยู่แล้ว)
+            if (newStatus) verifyShopLines(prefix);
         } else {
             alert("❌ ไม่สามารถอัปเดตสถานะร้านค้าได้: " + result.message);
             checkbox.checked = !newStatus; // กลับสถานะเดิมถ้าล้มเหลว

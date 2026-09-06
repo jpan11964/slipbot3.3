@@ -188,35 +188,57 @@
   display: none;
 }
 
-/* ===== ตาราง ===== */
+/* ===== ตาราง =====
+   กรอบนอกไม่เลื่อน — หัวตารางอยู่นอกกล่องที่เลื่อน แถบเลื่อนจึงเริ่มใต้หัวตาราง
+   (ถ้าใช้ sticky ในกล่องเดียวกัน แถบเลื่อนจะพาดขึ้นไปคลุมหัวตารางด้วย) */
 .audit-table-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: auto;   /* เลื่อนได้ทั้งแนวตั้งและแนวนอน เฉพาะในกรอบนี้ */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
 }
 
+/* หัวตาราง — เลื่อนแนวนอนตามเนื้อหาด้วย JS (ดู syncHeadScroll ใน audit.js) */
+.audit-head {
+  flex-shrink: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.audit-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 .audit-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;   /* จำเป็น — ตารางหัวกับตารางเนื้อหาจะได้กว้างเท่ากันเป๊ะ */
   font-size: 13px;
 }
 
+/* ความกว้างคอลัมน์ ต้องตรงกันทั้งสองตาราง (colgroup ชุดเดียวกันใน audit.html) */
+.audit-table .w-time { width: 108px; }
+.audit-table .w-user { width: 170px; }
+.audit-table .w-action { width: 215px; }
+.audit-table .w-target { width: 130px; }
+.audit-table .w-detail { width: auto; }
+.audit-table .w-status { width: 96px; }
+
 .audit-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #f8fafc;
   text-align: left;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
   padding: 11px 14px;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
@@ -294,7 +316,6 @@
 /* เป้าหมาย/รายละเอียดยาวได้ — ตัดด้วย ... แล้ว hover ดูเต็มจาก title */
 .col-target,
 .col-detail {
-  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

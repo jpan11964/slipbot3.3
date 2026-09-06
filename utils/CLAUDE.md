@@ -59,6 +59,7 @@ refreshAllShopTokens()                     // วน refresh ทุกร้า�
 startTokenRefreshScheduler()               // ตั้ง auto-refresh ทุก 4 วัน + catch-up ตอน start
 markLineTokenError({prefix, channelId, linename, reason})   // ตั้ง flag + แจ้งเตือน
 clearLineTokenError({prefix, channelId})   // ล้าง flag เมื่อกลับมาปกติ
+setLineWebhookError({prefix, channelId, bad})  // ธง webhook (แยกจาก token — ดู models/CLAUDE.md)
 ```
 
 > **สำคัญ:** token ที่ระบบใช้ออกจาก `/v2/oauth/accessToken` (client_credentials)
@@ -79,6 +80,37 @@ loadNotificationsFromDB()   // กู้กลับเข้า memory ตอ�
 - **เก็บใน memory เป็นหลัก** + persist ลง MongoDB แบบ best-effort
 - เหตุผล: ต้องแจ้งเตือน "MongoDB ล่ม" ได้ตอน MongoDB ล่ม (ตอนนั้นเขียน DB ไม่ได้)
 - `key` ใช้กันแจ้งซ้ำ — key เดิมภายใน 5 นาที จะรวมเป็นรายการเดียวแล้วเพิ่ม `count`
+
+### auditLog.js — ประวัติ "ใครกดอะไร"
+```js
+buildAuditEntry(req, res)    // สร้างรายการบันทึกจาก request (เรียกตอน res "finish")
+recordAudit(entry)           // ใส่ buffer แล้ว insertMany ทุก 1.5 วิ หรือครบ 30 รายการ
+listAudit({q, username, action, from, to, skip, limit})   // อ่านประวัติ + นับทั้งหมด
+auditFilterOptions()         // ชื่อผู้ใช้ / ประเภทการกระทำ ที่มีอยู่จริง (ไว้ทำ dropdown)
+flushAudit()                 // เขียนของค้างให้หมด (เรียกตอน SIGINT/SIGTERM)
+AUDIT_ACTIONS                // แคตตาล็อก path → { action, label, target(), detail(), resolve() }
+AUDIT_SKIP                   // path ที่ไม่ต้องบันทึก (บอทเขียนเอง / แค่ค้นหา)
+EXTRA_ACTION_LABELS          // ชื่อไทยของ action ที่เกิดจาก resolve() (ไว้ทำ dropdown)
+```
+
+**ดักที่ middleware ตัวเดียวใน `index.js`** (หลัง `express.json()`) ไม่ได้ไปผูก onclick ทุกปุ่ม
+เพราะครอบคลุมอัตโนมัติ (เพิ่ม route ใหม่ก็ถูกบันทึกทันที) และ client ปลอมไม่ได้
+
+> **ความปลอดภัย:** `buildAuditEntry` อ่านเฉพาะฟิลด์ที่ระบุไว้ในแคตตาล็อกเท่านั้น
+> ถ้าจะสรุปทั้ง body ให้ใช้ `safeSummary()` — มันตัดคีย์ที่มีคำว่า
+> password / token / secret ทิ้งก่อนเสมอ **ห้ามใช้ `JSON.stringify(body)` ตรงๆ**
+> (เคยพลาดที่ `/api/settings` แล้ว `apiKey` หลุดลง DB — เจอจากเทสต์ก่อนขึ้นจริง)
+
+เพิ่ม route ใหม่แล้วอยากให้ชื่อสวย → เพิ่มลง `AUDIT_ACTIONS`
+ถ้าไม่เพิ่มก็ยังบันทึกอยู่ แต่ `label` จะเป็น path ดิบ
+
+**route เดียวทำได้หลายอย่าง** ใช้ `resolve(body)` คืน `{ action, label }` มาทับ
+เช่น `/api/update-shop` เป็นได้ทั้ง "แก้ไขร้านค้า" (ส่ง `name`) และ
+"เปิด/ปิดบอทของร้าน" (ส่ง `status`) — แยก action แล้วกรองแยกกันได้ในหน้าประวัติ
+
+> action ที่เกิดจาก `resolve()` **ต้องใส่ชื่อไทยใน `EXTRA_ACTION_LABELS` ด้วย**
+> ไม่งั้น dropdown ตัวกรองจะโชว์เป็นคีย์ดิบ (`auditFilterOptions` อ่านชื่อจาก
+> แคตตาล็อกซึ่งไม่มี action ตัวนั้นเป็น key)
 
 ### customerStore.js
 ```js

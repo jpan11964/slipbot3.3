@@ -119,3 +119,43 @@ load/save ผ่าน `utils/settingsManager.js` เท่านั้น — �
 { sessionId: String, data: Buffer, contentType: String, createdAt: Date }
 ```
 temp storage สำหรับรูปที่ admin จะส่งผ่าน LINE — ลบเมื่อ session end
+
+## Shop.js — ธงสถานะของแต่ละไลน์
+
+```js
+lines: [{
+  tokenError,   tokenErrorAt,     // ขอ access token ไม่สำเร็จ
+  webhookError, webhookErrorAt,   // Webhook URL ไม่ตรง / LINE ยิงมาไม่ถึง
+}]
+```
+ไฟแดงหน้าชื่อไลน์ = `tokenError || webhookError`
+
+> **ต้องแยกเป็นสองธง** — `startTokenRefreshScheduler()` ต่ออายุ token ทุก 4 วัน
+> แล้วเรียก `clearLineTokenError()` ถ้ารวมเป็นธงเดียว ไฟแดงของ webhook จะหายเอง
+> ทั้งที่ยังตั้งผิดอยู่ (ตัวต่ออายุไม่รู้เรื่อง webhook เลย)
+
+## Log.js
+
+```js
+{ ts: Date, text: String }
+```
+log การใช้งานของบอท — TTL index บน `ts` ลบเองเมื่อเกิน **3 วัน**
+เขียนผ่าน buffer ใน `index.js` (`queueLogWrite`) ไม่ได้เขียนตรง
+
+## AuditLog.js
+
+```js
+{
+  ts, username, role,
+  action,          // คีย์ เช่น "shop.delete" — ใช้กรอง
+  label,           // ข้อความไทยที่แสดง เช่น "ลบร้านค้า"
+  target, detail,  // เป้าหมาย (prefix/ชื่อผู้ใช้) + รายละเอียด
+  method, path, status, ok, ip
+}
+```
+ประวัติ "ใครกดอะไร" — TTL index บน `ts` ลบเองเมื่อเกิน **90 วัน**
+เขียนผ่าน `utils/auditLog.js` เท่านั้น (มี buffer + ตัวกรองข้อมูลลับ)
+
+> **ห้ามเขียนตรงจากที่อื่น** — ต้องผ่าน `recordAudit()` ไม่งั้นข้อมูลลับ
+> (รหัสผ่าน / access_token / secret_token) อาจหลุดลงฐานข้อมูล
+

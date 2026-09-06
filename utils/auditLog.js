@@ -26,6 +26,9 @@ const pick = (body, ...keys) => {
 
 const onOff = (v) => (v === true || v === "true" ? "เปิด" : "ปิด");
 
+// /api/update-shop ถูกใช้ทั้งเปลี่ยนชื่อและกดสวิตช์ — แยกด้วยว่า body ส่ง status มาโดยไม่มี name
+const isShopToggle = (b) => b?.status !== undefined && !pick(b, "name", "newName");
+
 // ===== ฟิลด์ที่ห้ามบันทึกลงฐานข้อมูลเด็ดขาด =====
 const SECRET_KEYS = [
   "password", "currentpassword", "newpassword", "confirmpassword",
@@ -61,7 +64,15 @@ export const AUDIT_ACTIONS = {
 
   // ----- ร้านค้า -----
   "/api/add-shop": { action: "shop.add", label: "เพิ่มร้านค้า", target: b => pick(b, "prefix"), detail: b => pick(b, "name") },
-  "/api/update-shop": { action: "shop.update", label: "แก้ไขร้านค้า", target: b => pick(b, "prefix"), detail: b => pick(b, "name", "newName") },
+  // route เดียวใช้ 2 งาน — เปลี่ยนชื่อร้าน (ส่ง name) กับกดสวิตช์เปิด/ปิดบอท (ส่ง status)
+  // แยก action ด้วย resolve() เพื่อให้กรองแยกกันได้ในหน้าประวัติ
+  "/api/update-shop": {
+    action: "shop.update",
+    label: "แก้ไขร้านค้า",
+    target: b => pick(b, "prefix"),
+    resolve: b => (isShopToggle(b) ? { action: "shop.toggle", label: "เปิด/ปิดบอทของร้าน" } : null),
+    detail: b => (isShopToggle(b) ? onOff(b.status) : pick(b, "name", "newName")),
+  },
   "/api/delete-shop": { action: "shop.delete", label: "ลบร้านค้า", target: b => pick(b, "prefix") },
 
   // ----- บัญชี LINE -----
@@ -69,6 +80,9 @@ export const AUDIT_ACTIONS = {
   "/api/update-line": { action: "line.update", label: "แก้ไขบัญชี LINE", target: b => pick(b, "prefix"), detail: b => pick(b, "linename") },
   "/api/delete-line": { action: "line.delete", label: "ลบบัญชี LINE", target: b => pick(b, "prefix"), detail: b => pick(b, "linename", "index") },
   "/api/get-access-token": { action: "line.token", label: "ขอ access token ของ LINE", target: b => pick(b, "prefix"), detail: b => pick(b, "linename") },
+  "/api/check-line": { action: "line.check", label: "ตรวจสอบไลน์", target: b => pick(b, "prefix"), detail: b => (pick(b, "channelId") ? `channel ...${pick(b, "channelId").slice(-4)}` : "") },
+  "/api/apply-webhook": { action: "line.applyWebhook", label: "ตั้ง Webhook URL ให้ไลน์", target: b => pick(b, "prefix"), detail: b => (pick(b, "channelId") ? `channel ...${pick(b, "channelId").slice(-4)}` : "") },
+  "/api/check-shop-lines": { action: "line.checkAll", label: "ตรวจสอบไลน์ทั้งร้าน", target: b => pick(b, "prefix") },
   "/api/set-webhook": { action: "line.webhook", label: "ตั้งค่า webhook ของ LINE", target: b => pick(b, "prefix"), detail: b => pick(b, "linename") },
 
   // ----- บัญชีธนาคาร -----
@@ -113,6 +127,12 @@ export const AUDIT_ACTIONS = {
   // ----- แจ้งเตือน -----
   "/api/notifications/clear": { action: "noti.clear", label: "ล้างการแจ้งเตือนทั้งหมด" },
   "/api/notifications/test": { action: "noti.test", label: "สร้างการแจ้งเตือนทดสอบ" },
+};
+
+// ชื่อไทยของ action ที่ถูกสร้างจาก resolve() (ไม่ได้เป็น key ของแคตตาล็อกตรงๆ)
+// ต้องมีที่นี่ ไม่งั้น dropdown ตัวกรองในหน้าประวัติจะโชว์เป็นคีย์ดิบ
+export const EXTRA_ACTION_LABELS = {
+  "shop.toggle": "เปิด/ปิดบอทของร้าน",
 };
 
 // route ที่ไม่ต้องบันทึก — เกิดถี่มากและไม่ใช่การกระทำที่คนตั้งใจกด
@@ -172,11 +192,22 @@ export function buildAuditEntry(req, res) {
   // route ที่ยังไม่มีในแคตตาล็อก — เดาเป้าหมายจากฟิลด์ที่พบบ่อย (ไม่แตะฟิลด์ลับ)
   if (!spec && !target) target = pick(body, "prefix", "username", "userId", "name");
 
+  // บาง route ทำได้หลายอย่าง — ให้ spec เปลี่ยนชื่อการกระทำตามเนื้อ body ได้
+  let action = spec?.action || "other" + path.replace(/\//g, ".");
+  let label = spec?.label || path;
+  try {
+    const alt = spec?.resolve?.(body);
+    if (alt?.action) action = alt.action;
+    if (alt?.label) label = alt.label;
+  } catch {
+    // resolve พังก็ใช้ชื่อตั้งต้น ไม่ควรทำให้ request ล้ม
+  }
+
   return {
     username: req.session?.user?.username || "-",
     role: req.session?.user?.role || "",
-    action: spec?.action || "other" + path.replace(/\//g, "."),
-    label: spec?.label || path,
+    action,
+    label,
     target: short(target, 120),
     detail: short(detail, 200),
     method: req.method,
@@ -217,7 +248,7 @@ export async function auditFilterOptions() {
     AuditLog.distinct("username"),
     AuditLog.distinct("action"),
   ]);
-  const labelOf = {};
+  const labelOf = { ...EXTRA_ACTION_LABELS };
   for (const spec of Object.values(AUDIT_ACTIONS)) labelOf[spec.action] = spec.label;
   return {
     users: users.filter(Boolean).sort(),

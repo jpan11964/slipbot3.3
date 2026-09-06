@@ -141,6 +141,23 @@
 
   .logs-count { margin-left: 0; flex: 1 1 100%; }
 
+  /* เลื่อนดู log = ยุบแถบตัวกรอง ให้กล่อง log ได้พื้นที่เต็มจอ
+     (เลื่อนกลับขึ้นบนสุดแล้วกางคืนเอง — ดู updateLogsCompact ใน index.html)
+     ใช้ max-height แทน display: none เพื่อให้ยุบแบบมีอนิเมชัน */
+  .logs-toolbar {
+    max-height: 420px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+  }
+
+  .logs-page.compact .logs-toolbar {
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   /* ---------- ตารางที่กว้างเกินจอ → เลื่อนแนวนอนได้ ---------- */
   .dashboard-container,
   .dashboard-head,
@@ -252,6 +269,93 @@
     min-width: 0;
     padding: 12px 10px;
     box-sizing: border-box;   /* ไม่งั้นเส้นขอบของปุ่มคืนค่าทำให้กว้างเกินไป 3px */
+  }
+
+  /* ---------- หน้าประวัติการใช้งาน ----------
+     แถบเครื่องมือเดิมเป็น flex-wrap ที่แต่ละชิ้นกว้างตามเนื้อหา
+     พอจอแคบจะแตกเป็นแถวละ 1-2 ชิ้นไม่เท่ากัน ดูรกและกินพื้นที่
+     → วางเป็นตาราง 2 คอลัมน์เท่ากัน อ่านง่ายและสมดุล */
+  .audit-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .audit-filters {
+    flex: 1 1 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  /* ปุ่มล้าง กับ ตัวกรองด่วน กินเต็มแถว — เป็นตัวเปิด/ปิดของทั้งแถบ */
+  .audit-filters > .audit-clear-btn,
+  .audit-filters > .audit-select:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .audit-clear-btn {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .audit-select {
+    display: flex;
+    min-width: 0;
+  }
+
+  .audit-select select {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    padding: 10px 28px 10px 30px;
+  }
+
+  /* ป้าย "ตั้งแต่/ถึง" ขึ้นบรรทัดบนช่อง ไม่งั้นช่องวันที่แคบจนกดยาก */
+  .audit-filters label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .audit-filters input[type="datetime-local"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+  }
+
+  /* ตารางแคบเกินอ่านไม่ออก — ให้เลื่อนแนวนอนในกรอบแทนการบีบคอลัมน์
+     คอลัมน์คงที่รวมกันต้องน้อยกว่า min-width เสมอ ไม่งั้น "รายละเอียด"
+     (คอลัมน์เดียวที่กว้าง auto) จะโดนบีบจนเหลือ 0 แล้วหายไปเฉยๆ */
+  .audit-table { min-width: 780px; }
+  .audit-table .w-time { width: 92px; }
+  .audit-table .w-user { width: 150px; }
+  .audit-table .w-action { width: 190px; }
+  .audit-table .w-target { width: 110px; }
+  .audit-table .w-status { width: 88px; }
+
+  .audit-page {
+    padding-bottom: 10px;
+  }
+
+  /* เลื่อนดูรายการ = ยุบหัวเรื่องกับแถบตัวกรอง ให้ตารางได้พื้นที่เต็มจอ
+     (เลื่อนกลับขึ้นบนสุดแล้วกางคืนเอง — ดู updateCompact ใน audit.js)
+     ใช้ max-height แทน display: none เพื่อให้ยุบแบบมีอนิเมชัน */
+  .audit-subtitle,
+  .audit-toolbar {
+    max-height: 460px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+  }
+
+  .audit-page.compact .audit-subtitle,
+  .audit-page.compact .audit-toolbar {
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* ---------- หน้าจัดการ Prefix ----------
