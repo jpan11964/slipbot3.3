@@ -29,13 +29,17 @@ function toISODash(v) {
 }
 
 // เลือกไลน์ (ชื่อไลน์ที่ report เข้ามา — ตรงกับฟิลด์ shop) — null = ทุกไลน์
+// ค่าเริ่มต้นคือ "ไม่เลือกเลย" ซึ่งเท่ากับแสดงทุกไลน์อยู่แล้ว (ผู้ใช้ไม่ต้องกาครบแล้วค่อยติ๊กออกทีละอัน
+// เวลาจะกรองเฉพาะบางไลน์ — แค่ติ๊กอันที่ต้องการเพิ่มเข้าไปเลย)
+// เลือกครบทุกอันก็ได้ผลเหมือนกัน จึงถือเป็น "ทุกไลน์" (null) เช่นกัน ไม่ต้องส่ง filter เปล่าประโยชน์
 function getSelectedDashLines() {
   const list = document.getElementById("dashLineList");
   if (!list) return null;
   const boxes = [...list.querySelectorAll("input[type=checkbox]")];
   if (!boxes.length) return null;
   const checked = boxes.filter((b) => b.checked).map((b) => b.value);
-  return checked.length === boxes.length ? null : checked;
+  if (checked.length === 0 || checked.length === boxes.length) return null;
+  return checked;
 }
 
 function buildDashQuery(skip, limit) {
@@ -110,7 +114,7 @@ async function loadDashFilterOptions() {
     if (list && Array.isArray(data.shops)) {
       list.innerHTML = data.shops.map((s) => `
         <label class="dashboard-line-item">
-          <input type="checkbox" value="${escapeHtmlDash(s)}" checked onchange="onDashLineChange()">
+          <input type="checkbox" value="${escapeHtmlDash(s)}" onchange="onDashLineChange()">
           <span>${escapeHtmlDash(s)}</span>
         </label>`).join("");
     }
@@ -121,10 +125,35 @@ async function loadDashFilterOptions() {
   }
 }
 
+// เมนูใช้ position: fixed (ดูเหตุผลใน dashboard.css) — ต้องคำนวณพิกัดเองตอนเปิดทุกครั้ง
+// เพราะไม่ได้อิงตำแหน่งจาก .dashboard-line-filter (position: relative) แบบ absolute อีกต่อไป
+function positionDashLineMenu() {
+  const menu = document.getElementById("dashLineMenu");
+  const toggle = document.getElementById("dashLineToggle");
+  if (!menu || !toggle) return;
+  const rect = toggle.getBoundingClientRect();
+  const menuWidth = Math.max(rect.width, 220);
+  let left = rect.right - menuWidth; // ชิดขอบขวาของปุ่มเป็นค่าเริ่มต้น เหมือนเมนูตัวกรองร้านหน้าหลัก
+  left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8)); // กันล้นขอบจอ
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.left = `${left}px`;
+  menu.style.minWidth = `${menuWidth}px`;
+}
+
 function toggleDashLineMenu() {
   const menu = document.getElementById("dashLineMenu");
-  if (menu) menu.hidden = !menu.hidden;
+  if (!menu) return;
+  const opening = menu.hidden;
+  menu.hidden = !menu.hidden;
+  if (opening) positionDashLineMenu();
 }
+
+// จอหมุน/ปรับขนาด ระหว่างเปิดเมนูอยู่ — พิกัดที่คำนวณไว้จะเพี้ยน ปิดไปเลยง่ายกว่าคำนวณใหม่
+// ผูกครั้งเดียวตอนสคริปต์โหลด (เหมือน document click listener ด้านล่าง)
+window.addEventListener("resize", () => {
+  const menu = document.getElementById("dashLineMenu");
+  if (menu && !menu.hidden) menu.hidden = true;
+});
 
 function toggleDashLineAll(el) {
   document.querySelectorAll("#dashLineList input[type=checkbox]").forEach((b) => { b.checked = el.checked; });
@@ -142,7 +171,7 @@ function updateDashLineLabel() {
   const label = document.getElementById("dashLineLabel");
   if (!label) return;
   const sel = getSelectedDashLines();
-  label.textContent = !sel ? "ทุกไลน์" : sel.length ? `เลือก ${sel.length} ไลน์` : "ไม่ได้เลือกไลน์";
+  label.textContent = !sel ? "ทุกไลน์" : `เลือก ${sel.length} ไลน์`;
 }
 
 function onDashLineChange() {
@@ -169,9 +198,20 @@ function clearDashFilters() {
   if (statusEl) statusEl.value = "";
   if (fromEl) fromEl.value = "";
   if (toEl) toEl.value = "";
+  // เคลียร์ = กลับไปสถานะเริ่มต้น "ไม่เลือกไลน์ไหนเลย" (เท่ากับแสดงทุกไลน์)
   const allBox = document.getElementById("dashLineAll");
-  if (allBox) { allBox.checked = true; toggleDashLineAll(allBox); return; } // toggleDashLineAll เรียก loadSlipResults() ให้แล้ว
+  if (allBox) { allBox.checked = false; toggleDashLineAll(allBox); return; } // toggleDashLineAll เรียก loadSlipResults() ให้แล้ว
   loadSlipResults();
+}
+
+// ข้อมูลเก็บย้อนหลังได้แค่ 3 วัน (ตรงกับ SLIP_RESULT_RETENTION_DAYS ใน index.js + TTL index ใน models/SlipResult.js)
+// ต้องบังคับใน UI ด้วย ไม่งั้นเลือกวันที่เก่ากว่านั้นแล้วงงว่าทำไมไม่มีข้อมูล
+const DASH_RETENTION_DAYS = 3;
+
+// datetime-local ต้องเป็นเวลาท้องถิ่นรูปแบบ YYYY-MM-DDTHH:mm
+function toLocalInputDash(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function setupDashToolbar() {
@@ -182,6 +222,11 @@ function setupDashToolbar() {
   const clearEl = document.getElementById("dashClear");
   const toggleEl = document.getElementById("dashLineToggle");
   const allEl = document.getElementById("dashLineAll");
+
+  // ห้ามเลือกวันที่เก่ากว่าอายุที่เก็บจริง (3 วัน) — คำนวณใหม่ทุกครั้งที่เข้าหน้า เพราะ "ตอนนี้" เปลี่ยนตลอด
+  const minDate = toLocalInputDash(new Date(Date.now() - DASH_RETENTION_DAYS * 24 * 60 * 60 * 1000));
+  if (fromEl) fromEl.min = minDate;
+  if (toEl) toEl.min = minDate;
 
   // พิมพ์ค้นหาแล้วรอ 300ms ค่อยยิง (กันยิงถี่)
   let searchTimer;

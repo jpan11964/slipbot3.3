@@ -542,20 +542,25 @@ app.post("/api/slip-results", async (req, res) => {
   }
 });
 
-// GET: ดึง slip ภายใน 24 ชม. แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
+// เก็บ slip ย้อนหลังได้กี่วัน — ต้องตรงกับ TTL index บน createdAt ใน models/SlipResult.js เสมอ
+const SLIP_RESULT_RETENTION_DAYS = 3;
+
+// GET: ดึง slip ภายใน 3 วันล่าสุด แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
 // รองรับตัวกรอง: q (ชื่อผู้ใช้/เบอร์โทร/จำนวนเงิน), status (คั่นด้วย , เลือกได้หลายค่า),
 // shops (คั่นด้วย , = ชื่อไลน์ที่ report เข้ามา เก็บในฟิลด์ shop เลือกได้หลายค่า), from/to (ISO)
 app.get("/api/slip-results", async (req, res) => {
   try {
     const skip = Math.max(0, parseInt(req.query.skip) || 0);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const retentionCutoff = new Date(Date.now() - SLIP_RESULT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
     const filter = {};
 
+    // from ให้ย้อนหลังได้ไม่เกินอายุที่เก็บจริง — เลือกวันที่เก่ากว่านั้นไปก็ไม่มีข้อมูลอยู่แล้ว
     const from = req.query.from ? new Date(req.query.from) : null;
     const to = req.query.to ? new Date(req.query.to) : null;
-    filter.createdAt = { $gte: from && !isNaN(from) ? from : oneDayAgo };
+    const fromClamped = from && !isNaN(from) && from > retentionCutoff ? from : retentionCutoff;
+    filter.createdAt = { $gte: fromClamped };
     if (to && !isNaN(to)) filter.createdAt.$lte = to;
 
     const statusList = String(req.query.status || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -587,13 +592,13 @@ app.get("/api/slip-results", async (req, res) => {
   }
 });
 
-// GET: ตัวเลือกสำหรับ dropdown กรอง (สถานะการตรวจสลิป + รายชื่อไลน์) — เอาเฉพาะค่าที่มีข้อมูลจริงภายใน 24 ชม.
+// GET: ตัวเลือกสำหรับ dropdown กรอง (สถานะการตรวจสลิป + รายชื่อไลน์) — เอาเฉพาะค่าที่มีข้อมูลจริงภายใน 3 วันล่าสุด
 app.get("/api/slip-results/filters", async (req, res) => {
   try {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const retentionCutoff = new Date(Date.now() - SLIP_RESULT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const [statuses, shops] = await Promise.all([
-      SlipResult.distinct("status", { createdAt: { $gte: oneDayAgo } }),
-      SlipResult.distinct("shop", { createdAt: { $gte: oneDayAgo } }),
+      SlipResult.distinct("status", { createdAt: { $gte: retentionCutoff } }),
+      SlipResult.distinct("shop", { createdAt: { $gte: retentionCutoff } }),
     ]);
     res.json({
       statuses: statuses.filter(Boolean).sort((a, b) => a.localeCompare(b, "th")),
@@ -2464,6 +2469,9 @@ app.listen(PORT, async () => {
 
   try {
     await connectDB();
+    // TTL index เดิมของ slipresults ยังตั้งไว้ 24 ชม. — schema เปลี่ยนอย่างเดียวไม่มีผลกับ index ที่สร้างไปแล้วใน MongoDB
+    // ต้อง syncIndexes() ให้ปรับ expireAfterSeconds ตาม schema จริง (259200 = 3 วัน) ครั้งเดียวตอน start
+    await SlipResult.syncIndexes().catch((err) => console.error("❌ sync index SlipResult ล้มเหลว:", err.message));
     await migrateRoleToUser();
     await loadBankAccounts();
     await setupWebhooks();

@@ -89,7 +89,7 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 | `BankAccount.js` | Bank accounts grouped by prefix |
 | `Phone.js` | Maps LINE userId ↔ phone number ↔ prefix |
 | `Prefix.js` | Valid prefixes (must exist before adding a shop) |
-| `SlipResult.js` | Slip check history (kept 24h, max 100) |
+| `SlipResult.js` | Slip check history (kept 3 days, TTL index) |
 | `Setting.js` | Global settings (timeLimit, sameQrTimeLimit, etc.) |
 | `Temp.js` | Credentials (OWNER, ADMIN, MARKETING users) |
 | `QrEntry.js` | QR code dedup tracking |
@@ -139,7 +139,8 @@ Key maps: `usersWhoSentSlip`, `usersWhoSentImage`, `userMessageHistory`, `waitTi
 - `GET /api/bank-accounts`, `POST /api/add-bank`, `/api/edit-bank`, `/api/update-bank-status`, `/api/delete-bank`
 
 ### Slip Results
-- `GET /api/slip-results` — last 100 results within 24h
+- `GET /api/slip-results` — paginated results within last 3 days, filterable via `q`/`status`/`shops`/`from`/`to`
+- `GET /api/slip-results/filters` — distinct status/shop values for the dashboard filter dropdowns
 - `POST /api/slip-results` — save + broadcast via SSE
 
 ### Feature Toggles

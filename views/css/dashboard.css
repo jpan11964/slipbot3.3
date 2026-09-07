@@ -175,10 +175,15 @@
   position: relative;
 }
 
+/* กว้างคงที่เสมอ — ไม่งั้นข้อความ "ทุกไลน์" กับ "เลือก N ไลน์" ยาวไม่เท่ากัน
+   ทำให้ปุ่มขยับขนาดไปมาทุกครั้งที่ติ๊ก/ล้างตัวกรอง (ปุ่มข้างๆ ในแถวเดียวกันก็เลยขยับตาม)
+   ตั้งกว้างพอรองรับข้อความยาวสุดที่เป็นไปได้ แล้วให้ label ตัด ... เองถ้ายังไม่พอ (กันร้านเยอะเกิน 99 ไลน์) */
 .dashboard-line-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  width: 150px;
+  box-sizing: border-box;
   padding: 7px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -196,27 +201,39 @@
 }
 
 .dashboard-line-toggle i.bi-broadcast {
+  flex-shrink: 0;
   color: var(--blue);
   font-size: 13px;
 }
 
+#dashLineLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
 .dashboard-line-caret {
+  flex-shrink: 0;
   font-size: 10px;
   color: var(--text-muted);
 }
 
+/* position: fixed (ตั้งพิกัดจริงด้วย JS ตอนเปิด — ดู positionDashLineMenu() ใน dashboard.js)
+   ไม่ใช้ position: absolute เพราะ .dashboard-page มี overflow: hidden ครอบอยู่
+   ถ้าเป็น absolute เมนูจะโดนตัด/บังบางส่วนจนกดรายการไม่ได้ โดยเฉพาะบนจอมือถือ */
 .dashboard-line-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 50;
+  position: fixed;
+  z-index: 200;
   min-width: 220px;
   max-height: 300px;
   overflow-y: auto;
   background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 6px;
 }
 

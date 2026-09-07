@@ -17,7 +17,7 @@ const slipResultSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
-    index: { expires: 86400 }
+    index: { expires: 259200 } // 3 วัน — ต้องตรงกับ SLIP_RESULT_RETENTION_DAYS ใน index.js เสมอ
   }
 });
 
