@@ -450,3 +450,148 @@ body {
   overflow-y: auto;
   height: 100vh;
 }
+
+/* ===== สีประจำวัน + เส้นคั่นวัน =====
+   ใช้ร่วมกันทั้งหน้า Logs และหน้าการทำงานบอท — ป้ายเวลาของแต่ละวันได้สีต่างกัน
+   กวาดตาแล้วรู้ทันทีว่าแถวไหนข้ามวัน โดยไม่ต้องอ่านวันที่
+
+   ไม่ได้สุ่มสีจริง เพราะสุ่มแล้วอาจได้สีที่อ่านไม่ออก หรือไปชนกับสีที่มีความหมายอยู่แล้ว
+   (แดง = error / เขียว = สลิปถูกต้อง) — ใช้ชุดสีที่เลือกไว้แล้ววนตามลำดับวันแทน
+   วันเดิมจึงได้สีเดิมเสมอ รีเฟรชหรือเลื่อนโหลดเพิ่มกี่รอบก็ไม่เปลี่ยน
+
+   ส่งค่าผ่าน custom property ไม่ได้ทาสีตรงๆ — .log-time/.slip-time อยู่ในไฟล์ที่โหลดทีหลัง
+   ถ้าทาสีตรงนี้จะโดน background/border/color ของคลาสพวกนั้นทับ (specificity เท่ากัน)
+
+   วันนี้ไม่ติดคลาสอะไรเลย → ตกไปใช้สีเทาเริ่มต้นของป้าย (ดู dayColorClass ใน index.html)
+   ส่วนใหญ่ที่ดูคือของวันนี้ ปล่อยให้เรียบไว้ แล้วให้สีไปเน้นเฉพาะวันเก่ากว่า สบายตากว่า
+
+   ใช้โทนหม่น (ไม่ใช่สีสดจาก --*-dark) พื้นจางลงเหลือ .07 ขอบ .22
+   เช็คคอนทราสต์บนพื้นป้ายจริงแล้วอยู่ที่ 4.2-4.7:1 ทุกสี — อ่านออกสบายแต่ไม่จ้าตา */
+.day-c0 { --day-bg: rgba(59, 130, 246, 0.07); --day-border: rgba(59, 130, 246, 0.22); --day-fg: #4a72a8; }
+.day-c1 { --day-bg: rgba(16, 185, 129, 0.07); --day-border: rgba(16, 185, 129, 0.22); --day-fg: #3d8571; }
+.day-c2 { --day-bg: rgba(217, 119, 6, 0.07);  --day-border: rgba(217, 119, 6, 0.22);  --day-fg: #96702f; }
+.day-c3 { --day-bg: rgba(139, 92, 246, 0.07); --day-border: rgba(139, 92, 246, 0.22); --day-fg: #7a6aa6; }
+.day-c4 { --day-bg: rgba(6, 182, 212, 0.07);  --day-border: rgba(6, 182, 212, 0.22);  --day-fg: #487f8f; }
+
+/* เส้นคั่นระหว่างวัน — เส้นบางๆ ขนาบป้ายวันที่ไว้ตรงกลาง */
+.day-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.day-sep::before,
+.day-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.day-sep-label {
+  flex-shrink: 0;
+  padding: 3px 12px;
+  border: 1px solid var(--day-border, var(--border));
+  border-radius: 99px;
+  background: var(--day-bg, var(--bg));
+  color: var(--day-fg, var(--text-muted));
+  white-space: nowrap;
+}
+
+/* ===== สถานะกำลังโหลด / ว่าง (ใช้ในตารางของหน้าการทำงานบอท + จัดการข้อมูลลูกค้า) =====
+   หน้าตาเดียวกับ .logs-state ในหน้า Logs — แต่ประกาศไว้ตรงนี้เพื่อให้หน้าอื่นใช้ซ้ำได้
+   (หน้า Logs กับหน้าประวัติการใช้งานยังมีของตัวเองอยู่ ถ้าจะรวบให้เหลือชุดเดียวค่อยทำทีหลัง) */
+.app-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.app-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: app-spin 0.7s linear infinite;
+}
+
+@keyframes app-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== ป้ายเวลา (ใช้ทุกหน้าที่มีรายการ: Logs / การทำงานบอท / ประวัติการใช้งาน) =====
+   เดิมแต่ละหน้ามีคลาสของตัวเอง (.log-time / .slip-time / .audit-time) หน้าตาเหมือนกันเป๊ะ
+   แต่แก้ทีต้องไล่แก้ทุกไฟล์ — รวบมาไว้ที่เดียว
+   สีมาจากคลาส .day-cN ที่ติดมาด้วย ถ้าไม่มี (เช่นของวันนี้) จะตกไปใช้สีเทาเริ่มต้น */
+.time-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--day-bg, var(--bg));
+  border: 1px solid var(--day-border, var(--border));
+  color: var(--day-fg, var(--text-muted));
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;   /* ตัวเลขกว้างเท่ากัน คอลัมน์จึงตรง */
+  letter-spacing: 0.2px;
+  cursor: default;
+  /* ลากคลุมข้อความแล้วไม่ต้องติดเวลาไปด้วย — ก๊อปไปวางได้เฉพาะเนื้อหา */
+  -webkit-user-select: none;
+  user-select: none;
+  transition: border-color 0.15s;
+}
+
+/* เน้นขอบตอนชี้ ให้รู้ว่าป้ายนี้มีวันที่ให้ดูเพิ่ม — currentColor จะได้ไม่ทับสีประจำวัน */
+.time-pill:hover {
+  border-color: currentColor;
+}
+
+/* ===== ท้ายรายการ =====
+   ทุกหน้าใช้หลักการเดียวกัน: โหลดชุดแรก → เลื่อนถึงล่างสุดโหลดต่อ → หมดแล้วบอกให้รู้
+   ไม่มีปุ่ม "โหลดเพิ่ม" ที่ไหน ผู้ใช้จะได้ไม่ต้องจำว่าหน้าไหนกดปุ่ม หน้าไหนเลื่อนเอา */
+.app-list-end {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 18px 20px;
+  color: var(--text-light);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.app-list-end i {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* จำเป็น — display: flex ด้านบน specificity สูงกว่า [hidden] ของเบราว์เซอร์
+   ถ้าไม่มีบรรทัดนี้ endEl.hidden = true จะไม่ซ่อนจริง ข้อความ "แสดงครบแล้ว" จะโผล่ตั้งแต่ยังโหลดไม่เสร็จ */
+.app-list-end[hidden] {
+  display: none;
+}
+
+/* ===== จำนวนรายการที่พบ =====
+   กว้างขั้นต่ำคงที่ เพื่อให้กลุ่มปุ่มตัวกรองไม่ขยับตอนข้อความโผล่/หาย
+   (ใช้ min-width ไม่ใช่ width — ข้อความยาวกว่าปกติจะได้ไม่โดนตัด) */
+.list-count {
+  flex-shrink: 0;
+  min-width: 150px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}

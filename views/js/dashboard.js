@@ -118,7 +118,6 @@ async function loadDashFilterOptions() {
           <span>${escapeHtmlDash(s)}</span>
         </label>`).join("");
     }
-    updateDashLineAllState();
     updateDashLineLabel();
   } catch (err) {
     console.error("โหลดตัวกรอง dashboard ล้มเหลว:", err);
@@ -155,18 +154,6 @@ window.addEventListener("resize", () => {
   if (menu && !menu.hidden) menu.hidden = true;
 });
 
-function toggleDashLineAll(el) {
-  document.querySelectorAll("#dashLineList input[type=checkbox]").forEach((b) => { b.checked = el.checked; });
-  onDashLineChange();
-}
-
-function updateDashLineAllState() {
-  const all = document.getElementById("dashLineAll");
-  if (!all) return;
-  const boxes = [...document.querySelectorAll("#dashLineList input[type=checkbox]")];
-  all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
-}
-
 function updateDashLineLabel() {
   const label = document.getElementById("dashLineLabel");
   if (!label) return;
@@ -175,7 +162,6 @@ function updateDashLineLabel() {
 }
 
 function onDashLineChange() {
-  updateDashLineAllState();
   updateDashLineLabel();
   loadSlipResults();
 }
@@ -199,8 +185,8 @@ function clearDashFilters() {
   if (fromEl) fromEl.value = "";
   if (toEl) toEl.value = "";
   // เคลียร์ = กลับไปสถานะเริ่มต้น "ไม่เลือกไลน์ไหนเลย" (เท่ากับแสดงทุกไลน์)
-  const allBox = document.getElementById("dashLineAll");
-  if (allBox) { allBox.checked = false; toggleDashLineAll(allBox); return; } // toggleDashLineAll เรียก loadSlipResults() ให้แล้ว
+  document.querySelectorAll("#dashLineList input[type=checkbox]").forEach((b) => { b.checked = false; });
+  updateDashLineLabel();
   loadSlipResults();
 }
 
@@ -221,12 +207,18 @@ function setupDashToolbar() {
   const toEl = document.getElementById("dashTo");
   const clearEl = document.getElementById("dashClear");
   const toggleEl = document.getElementById("dashLineToggle");
-  const allEl = document.getElementById("dashLineAll");
 
-  // ห้ามเลือกวันที่เก่ากว่าอายุที่เก็บจริง (3 วัน) — คำนวณใหม่ทุกครั้งที่เข้าหน้า เพราะ "ตอนนี้" เปลี่ยนตลอด
-  const minDate = toLocalInputDash(new Date(Date.now() - DASH_RETENTION_DAYS * 24 * 60 * 60 * 1000));
-  if (fromEl) fromEl.min = minDate;
-  if (toEl) toEl.min = minDate;
+  // ห้ามเลือกเก่ากว่าอายุที่เก็บจริง (3 วัน) และห้ามเลือกเลยวันปัจจุบัน
+  // คำนวณใหม่ทุกครั้งที่เข้าหน้า เพราะ "ตอนนี้" เปลี่ยนตลอด
+  // max = สิ้นวันนี้ ไม่ใช่นาทีนี้ — จะได้ยังตั้งช่วง "ถึง 23:59 ของวันนี้" ได้ตามปกติ
+  const now = new Date();
+  const minDate = toLocalInputDash(new Date(now.getTime() - DASH_RETENTION_DAYS * 24 * 60 * 60 * 1000));
+  const maxDate = toLocalInputDash(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59));
+  [fromEl, toEl].forEach((el) => {
+    if (!el) return;
+    el.min = minDate;
+    el.max = maxDate;
+  });
 
   // พิมพ์ค้นหาแล้วรอ 300ms ค่อยยิง (กันยิงถี่)
   let searchTimer;
@@ -240,13 +232,38 @@ function setupDashToolbar() {
   toEl?.addEventListener("change", () => loadSlipResults());
   clearEl?.addEventListener("click", () => clearDashFilters());
   toggleEl?.addEventListener("click", (e) => { e.stopPropagation(); toggleDashLineMenu(); });
-  allEl?.addEventListener("change", () => toggleDashLineAll(allEl));
 }
 
 
 function clearLoadingRow() {
   document.getElementById("loading-row")?.remove();
   document.getElementById("empty-row")?.remove();
+}
+
+// ข้อความท้ายรายการ — โชว์เมื่อโหลดครบแล้วและมีรายการอยู่จริง
+// (ไม่มีข้อมูลเลยจะมีข้อความ "ยังไม่มีข้อมูลสลิป" อยู่แล้ว ไม่ต้องบอกซ้ำว่าครบแล้ว)
+function updateSlipListEnd() {
+  const tbody = document.getElementById("slip-results-body");
+  if (!tbody) return;
+  tbody.querySelector("#slip-end-row")?.remove();
+  if (!window.allLoaded || !tbody.querySelector("tr[data-day]")) return;
+  const tr = document.createElement("tr");
+  tr.id = "slip-end-row";
+  tr.innerHTML = `<td colspan="9"><div class="app-list-end"><i class="bi bi-check2-circle"></i> แสดงครบทุกรายการแล้ว</div></td>`;
+  tbody.appendChild(tr);
+}
+
+// วงกลมหมุนระหว่างรอข้อมูล — ต้องโชว์ทุกครั้งที่โหลดใหม่ (เปลี่ยนตัวกรอง/ค้นหา) ไม่ใช่แค่ตอนเปิดหน้าครั้งแรก
+// ไม่งั้นระหว่างรอ API ตารางจะว่างเปล่าจนดูเหมือนค้างหรือไม่มีข้อมูล
+function showLoadingRow() {
+  const tbody = document.getElementById("slip-results-body");
+  if (!tbody) return;
+  tbody.innerHTML = `
+    <tr id="loading-row">
+      <td colspan="9">
+        <div class="app-loading"><div class="app-spinner"></div>กำลังโหลดข้อมูล...</div>
+      </td>
+    </tr>`;
 }
 
 function showEmptyRow(text) {
@@ -260,10 +277,52 @@ function showEmptyRow(text) {
   tbody.appendChild(tr);
 }
 
-// สร้าง HTML ของแถวสลิป 1 แถว
+// เวลาเป็นป้ายกลมแบบหน้า Logs — ชี้เมาส์ค้างที่ป้ายเพื่อดูวันที่เต็ม
+// (เก็บย้อนหลัง 3 วัน เวลาอย่างเดียวจึงไม่พอบอกว่าเป็นของวันไหน)
+// ของวันนี้บอกว่า "วันนี้" ไปเลย อ่านแล้วเข้าใจทันทีกว่าต้องมานั่งเทียบวันที่เอง
+// dayColorClass / dayLabelOf / dayKeyOf / refreshDaySeparators มาจาก shell (views/index.html)
+// ใช้ตัวเดียวกับหน้า Logs สีประจำวันจะได้ตรงกันทั้งสองหน้า
+function renderSlipTime(r) {
+  const time = String(r.time || "").replace(/\s*น\.?\s*$/, "").trim();
+  if (!time) return "-";
+
+  let full = "";
+  let dayClass = "";
+  if (r.createdAt) {
+    const d = new Date(r.createdAt);
+    dayClass = " " + dayColorClass(r.createdAt);
+    full = `${dayLabelOf(r.createdAt)} ${d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.`;
+  }
+
+  const title = full ? ` title="${escapeHtmlDash(full)}"` : "";
+  return `<span class="time-pill${dayClass}"${title}>${escapeHtmlDash(time)}</span>`;
+}
+
+// วางเส้นคั่นทุกจุดที่ข้ามวัน — เรียกหลังวาดแถวเสร็จทุกครั้ง (โหลดแรก / โหลดเพิ่ม / สลิปใหม่จาก SSE)
+function refreshSlipDaySeparators() {
+  const tbody = document.getElementById("slip-results-body");
+  refreshDaySeparators(tbody, "tr[data-day]", "tr.slip-day-row", (day, row) => {
+    const tr = document.createElement("tr");
+    tr.className = "slip-day-row";
+    const td = document.createElement("td");
+    td.colSpan = 9;
+    const sep = document.createElement("div");
+    sep.className = "day-sep";
+    const label = document.createElement("span");
+    label.className = "day-sep-label " + dayColorClass(row.dataset.ts);
+    label.textContent = dayLabelOf(row.dataset.ts);
+    sep.appendChild(label);
+    td.appendChild(sep);
+    tr.appendChild(td);
+    return tr;
+  });
+}
+
+// สร้าง HTML ของแถวสลิป 1 แถว — ใช้ร่วมกันทั้งตอนโหลดจาก API และตอนรับสลิปใหม่จาก SSE
+// (ห้ามเขียน HTML ของแถวซ้ำที่อื่นอีก ไม่งั้นแถวสดกับแถวหลังรีเฟรชจะหน้าตาไม่ตรงกัน)
 function buildSlipRowHTML(r) {
   return `
-    <td>${r.time || "-"}</td>
+    <td>${renderSlipTime(r)}</td>
     <td title="${r.shop || "-"}">${truncateText(r.shop || "-", 10)}</td>
     <td class="line-name-cell" data-user-id="${r.userId}" title="${r.lineName || "-"}">
       ${truncateText(r.lineName || "-", 12)}
@@ -286,15 +345,22 @@ function appendSlipRows(rows) {
   rows.filter(r => isSlipDisplayed(r.prefix)).forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = buildSlipRowHTML(r);
+    if (r.createdAt) {
+      tr.dataset.ts = r.createdAt;
+      tr.dataset.day = dayKeyOf(r.createdAt);   // refreshSlipDaySeparators() ใช้เทียบว่าข้ามวันตรงไหน
+    }
     frag.appendChild(tr);
   });
   tbody.appendChild(frag);
+  refreshSlipDaySeparators();
+  updateSlipListEnd();
 }
 
 // โหลดครั้งแรก 200 รายการล่าสุด (เรียกซ้ำได้ทุกครั้งที่ตัวกรองในแถบเครื่องมือเปลี่ยน — เริ่มนับใหม่จาก skip 0 เสมอ)
 async function loadSlipResults() {
   window.allLoaded = false;
   window.isLoadingMore = false;
+  showLoadingRow();
   try {
     const res = await fetch(`/api/slip-results?${buildDashQuery(0, window.INITIAL_LOAD)}`);
     const data = await res.json();
@@ -338,6 +404,7 @@ async function loadMoreSlips() {
       if (countEl && isDashFilterActive()) countEl.textContent = `แสดง ${window.slipResults.length.toLocaleString()} รายการ`;
     }
     if (!Array.isArray(data) || data.length < window.LOAD_MORE) window.allLoaded = true;
+    updateSlipListEnd();   // ต้องเรียกหลังตั้ง allLoaded — appendSlipRows() ด้านบนยังเห็นค่าเก่าอยู่
   } catch (err) {
     console.error("❌ โหลดสลิปเพิ่มล้มเหลว:", err);
   } finally {
@@ -494,20 +561,13 @@ function connectSSE() {
         if (tbody) {
           clearLoadingRow(); // เคลียร์ placeholder "ยังไม่มีข้อมูล" ถ้ามี
           const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${newSlip.time || "-"}</td>
-            <td title="${newSlip.shop || "-"}">${truncateText(newSlip.shop || "-", 15)}</td>
-            <td class="line-name-cell" data-user-id="${newSlip.userId}" title="${newSlip.lineName || "-"}">
-              ${truncateText(newSlip.lineName || "-", 15)}
-            </td>
-            <td title="${newSlip.text || "-"}">${truncateText(newSlip.text || "-", 15)}</td>
-            <td>${renderPhoneColumn(newSlip.userId, newSlip.phoneNumber, newSlip.prefix)}</td>
-            <td class="${getStatusClass(newSlip.status)}">${newSlip.status || "-"}</td>
-            <td>${newSlip.amount || "-"}</td>
-            <td class="${getStatusReply(newSlip.response)}">${newSlip.response || "-"}</td>
-            <td>${renderRefOrReply(newSlip)}</td>
-          `;
+          tr.innerHTML = buildSlipRowHTML(newSlip);
+          if (newSlip.createdAt) {
+            tr.dataset.ts = newSlip.createdAt;
+            tr.dataset.day = dayKeyOf(newSlip.createdAt);
+          }
           tbody.insertBefore(tr, tbody.firstChild);
+          refreshSlipDaySeparators();   // ข้ามเที่ยงคืนพอดี เส้นคั่นต้องโผล่ให้เอง
         }
       } catch (err) {
         console.error("❌ Error parsing SSE data", err);

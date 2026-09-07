@@ -7,6 +7,7 @@ let custLoaded = 0;
 let custAllLoaded = false;
 let custLoading = false;
 let custQuery = "";
+let custSearchTimer;   // ต้องอยู่ระดับโมดูล ปุ่มล้างจะได้ยกเลิกการค้นหาที่ค้างอยู่ได้
 
 function custEsc(str) {
   const div = document.createElement("div");
@@ -34,6 +35,8 @@ function custRowCells(c) {
 function appendCustomerRows(list) {
   const tbody = document.getElementById("customers-body");
   if (!tbody) return;
+  document.getElementById("cust-loading")?.remove();   // เอาแถวสปินเนอร์ออกก่อน ไม่งั้นค้างอยู่เหนือข้อมูล
+  document.getElementById("cust-end")?.remove();       // ข้อความท้ายรายการต้องอยู่ล่างสุดเสมอ
   const frag = document.createDocumentFragment();
   list.forEach(c => {
     const tr = document.createElement("tr");
@@ -50,6 +53,32 @@ function custMessageRow(text, isError) {
   tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:24px;color:${isError ? "#ef4444" : "#94a3b8"};">${text}</td></tr>`;
 }
 
+// ข้อความท้ายรายการ — โชว์เมื่อโหลดครบแล้วและมีรายการอยู่จริง
+// (ไม่มีข้อมูลเลยจะมีข้อความ "ไม่มีข้อมูลลูกค้า" อยู่แล้ว ไม่ต้องบอกซ้ำว่าครบแล้ว)
+function custUpdateListEnd() {
+  const tbody = document.getElementById("customers-body");
+  if (!tbody) return;
+  tbody.querySelector("#cust-end")?.remove();
+  if (!custAllLoaded || !tbody.querySelector("tr[data-user-id]")) return;
+  const tr = document.createElement("tr");
+  tr.id = "cust-end";
+  tr.innerHTML = `<td colspan="4"><div class="app-list-end"><i class="bi bi-check2-circle"></i> แสดงครบทุกรายการแล้ว</div></td>`;
+  tbody.appendChild(tr);
+}
+
+// วงกลมหมุนระหว่างรอข้อมูล — ต้องโชว์ทุกครั้งที่โหลดใหม่ (ค้นหา/กดล้าง) ไม่ใช่แค่ตอนเปิดหน้าครั้งแรก
+// ไม่งั้นระหว่างรอ API ตารางจะว่างเปล่าจนดูเหมือนค้างหรือไม่มีข้อมูล
+function custLoadingRow() {
+  const tbody = document.getElementById("customers-body");
+  if (!tbody) return;
+  tbody.innerHTML = `
+    <tr id="cust-loading">
+      <td colspan="4">
+        <div class="app-loading"><div class="app-spinner"></div>กำลังโหลดข้อมูลลูกค้า...</div>
+      </td>
+    </tr>`;
+}
+
 // reset = true → ค้นหา/โหลดใหม่ตั้งแต่ต้น, false → โหลดต่อท้าย
 async function loadCustomers(reset) {
   const tbody = document.getElementById("customers-body");
@@ -60,7 +89,7 @@ async function loadCustomers(reset) {
   if (reset) {
     custLoaded = 0;
     custAllLoaded = false;
-    tbody.innerHTML = "";
+    custLoadingRow();
   }
 
   try {
@@ -74,9 +103,11 @@ async function loadCustomers(reset) {
       custLoaded += data.length;
       if (data.length < limit) custAllLoaded = true;
     }
+    document.getElementById("cust-loading")?.remove();   // เผื่อกรณี data ไม่ใช่ array (appendCustomerRows ไม่ได้ถูกเรียก)
     if (!tbody.querySelector("tr")) {
       custMessageRow(custQuery ? "ไม่พบลูกค้าที่ค้นหา" : "ไม่มีข้อมูลลูกค้า");
     }
+    custUpdateListEnd();
   } catch (err) {
     if (custLoaded === 0) custMessageRow(err.message || "โหลดข้อมูลไม่สำเร็จ", true);
   } finally {
@@ -135,13 +166,26 @@ function bindCustomerEvents() {
   const search = document.getElementById("customers-search");
   if (search && !search.dataset.bound) {
     search.dataset.bound = "1";
-    let t;
     search.addEventListener("input", () => {
-      clearTimeout(t);
-      t = setTimeout(() => {
+      clearTimeout(custSearchTimer);
+      custSearchTimer = setTimeout(() => {
         custQuery = search.value.trim();
         loadCustomers(true);
       }, 350);
+    });
+  }
+
+  const clearBtn = document.getElementById("customers-clear");
+  if (clearBtn && !clearBtn.dataset.bound) {
+    clearBtn.dataset.bound = "1";
+    clearBtn.addEventListener("click", () => {
+      clearTimeout(custSearchTimer); // ยกเลิกการค้นหาที่ค้างอยู่ ไม่งั้นจะโหลดซ้ำอีกรอบ
+      if (search) {
+        search.value = "";
+        search.focus();
+      }
+      custQuery = "";
+      loadCustomers(true);
     });
   }
 }

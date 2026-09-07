@@ -64,7 +64,10 @@
   gap: 8px;
 }
 
-.dashboard-filters label {
+/* ต้องเป็น > (ลูกโดยตรง) เท่านั้น — ป้าย "ตั้งแต่/ถึง" อยู่ระดับนี้
+   ถ้าใช้ descendant selector จะไปโดน label ของรายการไลน์ใน dropdown ด้วย
+   ทำให้รายการกลายเป็น inline แล้วไหลพันกันหลายคอลัมน์ */
+.dashboard-filters > label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -86,6 +89,21 @@
 .dashboard-filters input[type="datetime-local"]:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+/* บอกขอบเขตที่เลือกได้ ให้เห็นก่อนกดปฏิทิน — ไม่งั้นเจอวันที่ถูก disable แล้วงงว่าทำไมเลือกไม่ได้ */
+.dashboard-date-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dashboard-date-hint i {
+  font-size: 12px;
+  color: var(--blue);
 }
 
 /* dropdown ที่มีไอคอนนำหน้า — กรณีการตรวจสลิป */
@@ -135,26 +153,27 @@
   pointer-events: none;
 }
 
+/* ปุ่มล้างเป็นสีแดงตั้งแต่แรก — ให้ตรงกับหน้าอื่นทุกหน้า (ดูหมายเหตุใน audit.css) */
 .dashboard-clear-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 7px 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--red);
   border-radius: var(--radius-sm);
   background: var(--white);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--red);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 .dashboard-clear-btn:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--white);
+  border-color: var(--red-dark);
+  color: var(--red-dark);
+  background: var(--red-muted);
 }
 
 /* กว้างคงที่ไว้เสมอ (ไม่ใช้ :empty { display: none }) — ไม่งั้นพอมี/ไม่มีข้อความ
@@ -241,10 +260,13 @@
   display: none;
 }
 
+/* รายการไลน์ — เรียงลงมาแถวเดียวเสมอ (ทั้งเดสก์ท็อปและมือถือ) อ่านง่ายกว่าไหลหลายคอลัมน์ */
 .dashboard-line-item {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -256,19 +278,19 @@
   background: var(--blue-muted);
 }
 
+.dashboard-line-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dashboard-line-item input {
   width: 16px;
   height: 16px;
   accent-color: var(--blue);
   cursor: pointer;
   flex-shrink: 0;
-}
-
-.dashboard-line-all {
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-light);
-  border-radius: 0;
-  margin-bottom: 4px;
 }
 
 .dashboard-container {
@@ -385,6 +407,33 @@
 
 .dashboard-table th:nth-child(9),
 .dashboard-table td:nth-child(9) { width: 17%; overflow: hidden; text-overflow: ellipsis; }
+
+/* ป้ายเวลาใช้ .time-pill จาก shared.css แล้ว */
+
+/* แถวที่ไม่ใช่ข้อมูล (เส้นคั่นวัน / กำลังโหลด / ไม่มีข้อมูล)
+   ต้องปลดความสูง เส้นคั่น และ hover ของแถวปกติออก ไม่งั้นมีเส้นเทาลากพาดใต้แถวเหมือนแถวข้อมูลจริง */
+#slip-results-body tr.slip-day-row,
+#slip-results-body tr#loading-row,
+#slip-results-body tr#empty-row {
+  height: auto;
+}
+
+#slip-results-body tr.slip-day-row td,
+#slip-results-body tr#loading-row td,
+#slip-results-body tr#empty-row td {
+  border-bottom: none;
+  background: var(--white);
+}
+
+#slip-results-body tr.slip-day-row td {
+  padding: 0 14px;
+}
+
+#slip-results-body tr.slip-day-row:hover td,
+#slip-results-body tr#loading-row:hover td,
+#slip-results-body tr#empty-row:hover td {
+  background: var(--white);
+}
 
 /* Phone input */
 .phone-input {

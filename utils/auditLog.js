@@ -122,6 +122,8 @@ export const AUDIT_ACTIONS = {
   "/api/customer-phone": { action: "customer.phone", label: "แก้ไขเบอร์ลูกค้า", target: b => pick(b, "userId"), detail: b => pick(b, "phone") },
   "/api/send-message": { action: "message.send", label: "ส่งข้อความหาลูกค้า", target: b => pick(b, "userId", "prefix"), detail: b => short(pick(b, "message", "text"), 60) },
   "/api/upload-send-image-line": { action: "message.uploadImage", label: "อัปโหลดรูปสำหรับส่งข้อความ" },
+  // อยู่ใน AUDIT_SKIP แล้ว จึงไม่มีการบันทึกใหม่อีก — แต่ยังต้องเก็บบรรทัดนี้ไว้
+  // เพราะรายการเก่าที่บันทึกไปแล้วยังอยู่อีก 90 วัน ถ้าลบทิ้ง dropdown ตัวกรองจะโชว์เป็นคีย์ดิบ
   "/api/delete-my-upload": { action: "message.deleteUpload", label: "ลบรูปที่อัปโหลดไว้" },
 
   // ----- แจ้งเตือน -----
@@ -142,6 +144,7 @@ export const AUDIT_SKIP = new Set([
   "/api/slip-results",       // บอทเขียนเอง ไม่ใช่คนกด
   "/api/save-phone",         // บอทเขียนเอง
   "/api/user-lookup-batch",  // แค่ค้นหา ไม่ได้แก้อะไร
+  "/api/delete-my-upload",   // ล้างไฟล์ชั่วคราวของตัวเองตอนปิดหน้า ไม่ใช่คนกดลบ
 ]);
 
 // ===== เขียนลง MongoDB แบบเป็นชุด =====

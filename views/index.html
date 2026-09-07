@@ -157,6 +157,61 @@
       content.innerHTML = `<p style="text-align:center;padding-top:60px;font-size:14px;color:#64748b;">${message}</p>`
     }
 
+    // ===== วัน: คีย์ / สีประจำวัน / ป้ายชื่อวัน =====
+    // อยู่ใน shell เพราะใช้ทั้งหน้า Logs (สคริปต์อยู่ในไฟล์นี้) และหน้าการทำงานบอท (dashboard.js)
+    // shell โหลดก่อนสคริปต์ของหน้าย่อยเสมอ dashboard.js จึงเรียกได้แน่นอน
+
+    const DAY_COLOR_COUNT = 5   // ต้องเท่ากับจำนวนคลาส .day-cN ใน shared.css
+
+    // YYYY-MM-DD ตามเวลาท้องถิ่น — ใช้เทียบว่าสองแถวคนละวันไหม (เทียบ string เร็วกว่าแปลง Date ซ้ำ)
+    function dayKeyOf(ts) {
+      const d = new Date(ts)
+      if (isNaN(d)) return ""
+      const pad = (n) => String(n).padStart(2, "0")
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    }
+
+    // สีประจำวัน — วนตามลำดับวันจริง วันเดิมจึงได้สีเดิมเสมอ ไม่ว่าจะโหลดใหม่กี่รอบ
+    // (หารด้วยความยาววันเพื่อให้เลขเพิ่มทีละ 1 ต่อวัน — เวลาเที่ยงคืนท้องถิ่นไม่ได้ลงตัวพอดี แต่ floor แล้วยังเพิ่มทีละ 1 อยู่ดี)
+    // วันนี้คืนค่าว่าง = ไม่ติดสี ปล่อยให้เป็นเทาเริ่มต้นของป้าย
+    // เพราะส่วนใหญ่ที่ดูคือของวันนี้อยู่แล้ว ให้สีไปเน้นเฉพาะวันเก่ากว่าจะสบายตากว่า
+    function dayColorClass(ts) {
+      const d = new Date(ts)
+      if (isNaN(d)) return ""
+      if (d.toDateString() === new Date().toDateString()) return ""
+      const days = Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 86400000)
+      return `day-c${((days % DAY_COLOR_COUNT) + DAY_COLOR_COUNT) % DAY_COLOR_COUNT}`
+    }
+
+    // ชื่อวันสำหรับป้าย/tooltip — วันนี้บอกว่า "วันนี้" ไปเลย อ่านแล้วเข้าใจทันที
+    function dayLabelOf(ts) {
+      const d = new Date(ts)
+      if (isNaN(d)) return ""
+      if (d.toDateString() === new Date().toDateString()) return "วันนี้"
+      return d.toLocaleDateString("th-TH", { dateStyle: "medium" })
+    }
+
+    // เส้นคั่นวัน — สร้างใหม่ทั้งชุดหลังวาดรายการเสร็จทุกครั้ง (ทั้งโหลดแรก โหลดเพิ่ม และของใหม่ที่แทรกบนสุด)
+    // ทำแบบนี้แทนการค่อยๆ แทรกตอน append เพราะไม่ต้องจำสถานะว่าวันสุดท้ายคือวันอะไร
+    // แถวไหนก็แล้วแต่ที่วันไม่ตรงกับแถวก่อนหน้า จะได้เส้นคั่นเสมอ ไม่มีทางตกหล่นหรือซ้ำ
+    //   container  = กล่องที่มีรายการอยู่
+    //   rowSel     = selector ของแถวข้อมูล (ต้องมี data-day ติดไว้แล้ว)
+    //   makeSep    = ฟังก์ชันสร้าง element เส้นคั่นจาก (dayKey, ตัวอย่างแถวของวันนั้น)
+    function refreshDaySeparators(container, rowSel, sepSel, makeSep) {
+      if (!container) return
+      container.querySelectorAll(sepSel).forEach((el) => el.remove())
+
+      const rows = [...container.querySelectorAll(rowSel)]
+      let prevDay = rows[0]?.dataset.day || ""
+      for (const row of rows.slice(1)) {
+        const day = row.dataset.day || ""
+        if (day && prevDay && day !== prevDay) {
+          container.insertBefore(makeSep(day, row), row)
+        }
+        if (day) prevDay = day
+      }
+    }
+
     async function loadPage(event, page, opts = {}) {
       if (event) event.preventDefault?.()
 
@@ -262,8 +317,6 @@
             let logsAllLoaded = false
             let logsLoading = false
 
-            const THAI_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."]
-
             function makeLogEntry(entry, isError) {
               // entry เป็น { ts, text } — รองรับ string เดิมด้วยเผื่อ log เก่าค้างอยู่
               const raw = typeof entry === "string" ? entry : entry.text
@@ -278,24 +331,15 @@
               const msgText = m ? m[2] : raw
 
               if (timeText) {
+                // ป้ายเวลาโชว์แค่ HH:mm — วันที่ไปอยู่ใน tooltip ตอนชี้เมาส์
+                // (.time-pill นิยามใน shared.css ใช้ร่วมกับหน้าการทำงานบอท/ประวัติการใช้งาน)
                 const timeEl = document.createElement("span")
-                timeEl.className = "log-time"
-
-                // ถ้าไม่ใช่วันนี้ ให้บอกวันที่ด้วย จะได้ไม่สับสนตอนกรองย้อนหลังหลายวัน
+                timeEl.className = "time-pill" + (ts ? ` ${dayColorClass(ts)}` : "")
+                timeEl.textContent = timeText
                 if (ts) {
                   const d = new Date(ts)
-                  if (d.toDateString() !== new Date().toDateString()) {
-                    const dateEl = document.createElement("span")
-                    dateEl.className = "log-date"
-                    dateEl.textContent = `${d.getDate()} ${THAI_MONTHS[d.getMonth()]}`
-                    timeEl.appendChild(dateEl)
-                  }
+                  timeEl.title = `${dayLabelOf(ts)} ${d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.`
                 }
-                // ต้องห่อเวลาเป็น element ด้วย ไม่งั้น gap ของ flex จะไม่มีผล
-                // (text node เปล่าๆ ไม่นับเป็น flex item — วันที่กับเวลาจะติดกัน)
-                const hm = document.createElement("span")
-                hm.textContent = timeText
-                timeEl.appendChild(hm)
                 el.appendChild(timeEl)
               }
 
@@ -305,10 +349,34 @@
               el.appendChild(msgEl)
 
               if (ts) {
-                el.dataset.ts = ts
-                el.title = new Date(ts).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "medium" })
+                el.dataset.ts = ts    // jumpToTargetLog() ใช้หาแถวที่ตรงกับเวลาของการแจ้งเตือน
+                el.dataset.day = dayKeyOf(ts)   // refreshLogDaySeparators() ใช้เทียบว่าข้ามวันตรงไหน
               }
               return el
+            }
+
+            // ข้อความท้ายรายการ — โชว์เมื่อโหลดครบแล้วและมี log อยู่จริง
+            // (ไม่มี log เลยจะมีข้อความ "ยังไม่มี log" อยู่แล้ว ไม่ต้องบอกซ้ำว่าครบแล้ว)
+            function updateLogsListEnd() {
+              logsContainer.querySelector(".logs-end")?.remove()
+              if (!logsAllLoaded || !logsContainer.querySelector(".log-entry")) return
+              const end = document.createElement("div")
+              end.className = "app-list-end logs-end"
+              end.innerHTML = '<i class="bi bi-check2-circle"></i> แสดงครบทุกรายการแล้ว'
+              logsContainer.appendChild(end)
+            }
+
+            // วางเส้นคั่นทุกจุดที่ข้ามวัน — เรียกหลังวาดรายการเสร็จทุกครั้ง
+            function refreshLogDaySeparators() {
+              refreshDaySeparators(logsContainer, ".log-entry[data-day]", ".log-day-sep", (day, row) => {
+                const sep = document.createElement("div")
+                sep.className = "day-sep log-day-sep"
+                const label = document.createElement("span")
+                label.className = "day-sep-label " + dayColorClass(row.dataset.ts)
+                label.textContent = dayLabelOf(row.dataset.ts)
+                sep.appendChild(label)
+                return sep
+              })
             }
 
             // datetime-local ให้ค่าเป็นเวลาท้องถิ่นแบบไม่มี timezone — แปลงเป็น ISO ก่อนส่ง
@@ -375,9 +443,12 @@
                 logsTotal = Array.isArray(data) ? logsLoaded + list.length : (data.total ?? 0)
 
                 if (initial) clearLogsState()
+                logsContainer.querySelector(".logs-end")?.remove()   // ต้องอยู่ล่างสุดเสมอ เอาออกก่อนต่อรายการ
                 list.forEach(e => logsContainer.appendChild(makeLogEntry(e))) // ใหม่อยู่บน เก่าต่อท้ายลงล่าง
+                refreshLogDaySeparators()
                 logsLoaded += list.length
                 if (list.length < limit) logsAllLoaded = true
+                updateLogsListEnd()
 
                 if (initial && !list.length) {
                   // log เก็บย้อนหลัง 3 วัน (persist ลง MongoDB แล้ว ไม่หายตอน restart)
@@ -446,6 +517,18 @@
                      `T${pad(d.getHours())}:${pad(d.getMinutes())}`
             }
 
+            // log เก็บย้อนหลังแค่ 3 วัน (LOG_RETENTION_DAYS ใน index.js + TTL ใน models/Log.js)
+            // ห้ามเลือกเก่ากว่านั้น และห้ามเลือกเลยวันปัจจุบัน — แบบเดียวกับหน้าการทำงานบอท
+            // max = สิ้นวันนี้ ไม่ใช่นาทีนี้ จะได้ยังตั้ง "ถึง 23:59 ของวันนี้" ได้ตามปกติ
+            const LOGS_RETENTION_DAYS = 3
+            const logsNow = new Date()
+            const logsMinDate = toLocalInput(new Date(logsNow.getTime() - LOGS_RETENTION_DAYS * 86400000))
+            const logsMaxDate = toLocalInput(new Date(logsNow.getFullYear(), logsNow.getMonth(), logsNow.getDate(), 23, 59))
+            for (const el of [fromEl, toEl]) {
+              el.min = logsMinDate
+              el.max = logsMaxDate
+            }
+
             // กรองด่วน — ย้อนหลัง N วันจนถึงตอนนี้
             quickEl?.addEventListener("change", () => {
               const days = Number(quickEl.value)
@@ -505,6 +588,7 @@
               try { entry = JSON.parse(event.data) } catch { entry = event.data }
               clearLogsState()   // มี log ใหม่แล้ว ข้อความ "ไม่พบ log" ต้องหายไป
               logsContainer.insertBefore(makeLogEntry(entry), logsContainer.firstChild)
+              refreshLogDaySeparators()   // ข้ามเที่ยงคืนพอดี เส้นคั่นต้องโผล่ให้เอง
               logsLoaded++ // log ใหม่ดันประวัติลง 1 → ปรับ skip ให้ตรง
             }
             eventSource.onerror = () => {

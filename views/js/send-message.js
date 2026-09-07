@@ -30,19 +30,23 @@ if (userIdInput) {
   });
 }
 
-window.addEventListener("beforeunload", async () => {
+// ล้างรูปชั่วคราวทิ้งตอนปิด/รีเฟรชหน้า
+//
+// listener นี้อยู่ระดับ top-level = ผูกกับ window ครั้งเดียวแล้วอยู่ยาวทั้ง session
+// (สคริปต์ของหน้าย่อยถูกโหลดครั้งเดียว ดู __loadedScripts ใน index.html)
+// เข้าหน้านี้ครั้งเดียวก็พอ หลังจากนั้นรีเฟรชแอปตรงไหนก็ตามมันจะยิงตาม
+// เดิมยิงทุกครั้งไม่ว่าจะมีรูปค้างอยู่หรือไม่ — เปลืองการ query DB เปล่าๆ
+// และไปโผล่ในประวัติการใช้งานเป็น "ลบรูปที่อัปโหลดไว้" รัวๆ ทั้งที่ผู้ใช้ไม่ได้ลบอะไรเลย
+// → ยิงเฉพาะตอนมีรูปค้างอยู่จริงเท่านั้น
+window.addEventListener("beforeunload", () => {
+  if (!uploadedImageURL) return;
   try {
-    // ใช้ session cookie อัตโนมัติ (เพราะมี credentials: 'include' อยู่แล้ว)
-    const res = await fetch("/api/delete-my-upload", {
+    // keepalive ให้ request วิ่งต่อจนจบแม้หน้าจะปิดไปแล้ว (fetch ปกติโดนยกเลิก)
+    fetch("/api/delete-my-upload", {
       method: "DELETE",
-      credentials: "include" // ส่ง sessionId ไปด้วย
+      credentials: "include", // ส่ง sessionId ไปด้วย
+      keepalive: true
     });
-
-    if (res.ok) {
-      console.log("ลบรูปภาพตอนรีเฟรชเรียบร้อย");
-    } else {
-      console.warn("ลบรูปภาพตอนรีเฟรชไม่สำเร็จ");
-    }
   } catch (err) {
     console.error("❌ Error ตอนพยายามลบภาพก่อน unload:", err);
   }

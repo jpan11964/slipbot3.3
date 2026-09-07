@@ -139,7 +139,17 @@
 
   .logs-clear-btn { flex: 1 1 100%; justify-content: center; }
 
-  .logs-count { margin-left: 0; flex: 1 1 100%; }
+  .logs-count { margin-left: 0; flex: 1 1 100%; min-width: 0; }
+
+  /* บนมือถือทุกชิ้นกินเต็มแถวอยู่แล้ว ข้อความผลลัพธ์จึงไม่ได้ดันปุ่มให้ขยับ
+     ไม่ต้องกันที่ไว้ — ตอนว่างซ่อนไปเลย ไม่งั้นเหลือแถวเปล่าคั่นฟรีๆ */
+  .list-count { flex: 1 1 100%; min-width: 0; }
+
+  .logs-count:empty,
+  .dashboard-count:empty,
+  .list-count:empty {
+    display: none;
+  }
 
   /* เลื่อนดู log = ยุบแถบตัวกรอง ให้กล่อง log ได้พื้นที่เต็มจอ
      (เลื่อนกลับขึ้นบนสุดแล้วกางคืนเอง — ดู updateLogsCompact ใน index.html)
@@ -500,9 +510,15 @@
     gap: 8px;
   }
 
-  /* ปุ่มล้างกินเต็มแถว — เป็นตัวเปิด/ปิดของทั้งแถบ */
-  .dashboard-filters > .dashboard-clear-btn {
+  /* ปุ่มล้าง กับ ข้อความบอกช่วงที่เลือกได้ กินเต็มแถว */
+  .dashboard-filters > .dashboard-clear-btn,
+  .dashboard-filters > .dashboard-date-hint {
     grid-column: 1 / -1;
+  }
+
+  .dashboard-date-hint {
+    justify-content: center;
+    white-space: normal;   /* จอแคบให้ตัดบรรทัดได้ ไม่ดันตารางให้เลื่อนแนวนอน */
   }
 
   .dashboard-clear-btn {
@@ -529,8 +545,10 @@
     padding: 10px;
   }
 
-  /* ป้าย "ตั้งแต่/ถึง" ขึ้นบรรทัดบนช่อง ไม่งั้นช่องวันที่แคบจนกดยาก */
-  .dashboard-filters label {
+  /* ป้าย "ตั้งแต่/ถึง" ขึ้นบรรทัดบนช่อง ไม่งั้นช่องวันที่แคบจนกดยาก
+     ต้องเป็น > (ลูกโดยตรง) เท่านั้น ไม่งั้นไปโดน label ของรายการไลน์ใน dropdown ด้วย
+     แล้วช่องติ๊กจะไปอยู่เหนือชื่อไลน์แทนที่จะอยู่ข้างกัน */
+  .dashboard-filters > label {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;

@@ -5,11 +5,6 @@
 
 const AUDIT_PAGE_SIZE = 100;
 
-const AUDIT_THAI_MONTHS = [
-  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
-  "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
-];
-
 // ไอคอนประจำหมวด — ดูปราดเดียวรู้ว่าเป็นเรื่องอะไร
 const AUDIT_ICONS = {
   auth: "bi-box-arrow-in-right",
@@ -39,7 +34,7 @@ function initAuditPage() {
   const clearEl = document.getElementById("auditClear");
   const countEl = document.getElementById("auditCount");
   const stateEl = document.getElementById("auditState");
-  const moreEl = document.getElementById("auditMore");
+  const endEl = document.getElementById("auditEnd");
   const headEl = document.getElementById("auditHead");
   const scrollEl = document.getElementById("auditScroll");
 
@@ -60,6 +55,8 @@ function initAuditPage() {
   scrollEl.addEventListener("scroll", () => {
     headEl.scrollLeft = scrollEl.scrollLeft;
     updateCompact();
+    // เลื่อนถึงใกล้ล่างสุด → โหลดชุดถัดไปเอง (หลักการเดียวกับหน้าอื่นทุกหน้า)
+    if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 40) load(false);
   });
 
   // กล่องเนื้อหามีแถบเลื่อนกินความกว้างไป แต่หัวตารางไม่มี
@@ -73,6 +70,7 @@ function initAuditPage() {
   let loaded = 0;
   let total = 0;
   let loading = false;
+  let allLoaded = false;
 
   // ---------- สถานะกลางตาราง ----------
   function setState(kind, text, hint) {
@@ -104,35 +102,23 @@ function initAuditPage() {
   }
   const clearState = () => { stateEl.hidden = true; stateEl.replaceChildren(); };
 
-  // ---------- เวลา ----------
-  function formatTime(ts) {
-    const d = new Date(ts);
-    const pad = n => String(n).padStart(2, "0");
-    const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    if (d.toDateString() === new Date().toDateString()) return { date: "", time: hm };
-    return { date: `${d.getDate()} ${AUDIT_THAI_MONTHS[d.getMonth()]}`, time: hm };
-  }
-
   // ---------- หนึ่งแถว ----------
   function makeRow(r) {
     const tr = document.createElement("tr");
     if (!r.ok) tr.className = "failed";
+    tr.dataset.ts = r.ts;
+    tr.dataset.day = dayKeyOf(r.ts);   // refreshAuditDaySeparators() ใช้เทียบว่าข้ามวันตรงไหน
 
-    // เวลา
+    // เวลา — ป้ายเดียวกับหน้า Logs/การทำงานบอท โชว์แค่ HH:mm วันที่อยู่ใน tooltip
     const tdTime = document.createElement("td");
     tdTime.className = "col-time";
-    const { date, time } = formatTime(r.ts);
-    if (date) {
-      const dEl = document.createElement("span");
-      dEl.className = "audit-date";
-      dEl.textContent = date;
-      tdTime.appendChild(dEl);
-    }
+    const d = new Date(r.ts);
+    const pad = n => String(n).padStart(2, "0");
     const tEl = document.createElement("span");
-    tEl.className = "audit-time";
-    tEl.textContent = time;
+    tEl.className = "time-pill " + dayColorClass(r.ts);
+    tEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    tEl.title = `${dayLabelOf(r.ts)} ${pad(d.getHours())}:${pad(d.getMinutes())} น.`;
     tdTime.appendChild(tEl);
-    tdTime.title = new Date(r.ts).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "medium" });
 
     // ผู้ใช้
     const tdUser = document.createElement("td");
@@ -198,15 +184,36 @@ function initAuditPage() {
   const hasFilter = () =>
     !!(searchEl.value.trim() || userEl.value || actionEl.value || fromEl.value || toEl.value);
 
+  // วางเส้นคั่นทุกจุดที่ข้ามวัน (ตัวช่วยกลางอยู่ใน views/index.html ใช้ร่วมกับหน้า Logs/การทำงานบอท)
+  function refreshAuditDaySeparators() {
+    refreshDaySeparators(bodyEl, "tr[data-day]", "tr.audit-day-row", (day, row) => {
+      const tr = document.createElement("tr");
+      tr.className = "audit-day-row";
+      const td = document.createElement("td");
+      td.colSpan = 6;
+      const sep = document.createElement("div");
+      sep.className = "day-sep";
+      const label = document.createElement("span");
+      label.className = "day-sep-label " + dayColorClass(row.dataset.ts);
+      label.textContent = dayLabelOf(row.dataset.ts);
+      sep.appendChild(label);
+      td.appendChild(sep);
+      tr.appendChild(td);
+      return tr;
+    });
+  }
+
   // ---------- โหลดข้อมูล ----------
   async function load(initial) {
     if (loading) return;
+    if (!initial && allLoaded) return;
     loading = true;
-    moreEl.hidden = true;
+    endEl.hidden = true;
 
     if (initial) {
       bodyEl.replaceChildren();
       loaded = 0;
+      allLoaded = false;
       scrollEl.scrollTop = 0;
       pageEl.classList.remove("compact");   // เริ่มชุดใหม่ = กางแถบตัวกรองคืน
       setState("loading", "กำลังโหลดประวัติ...");
@@ -226,10 +233,10 @@ function initAuditPage() {
       if (initial) clearState();
       rows.forEach(r => bodyEl.appendChild(makeRow(r)));
       loaded += rows.length;
+      refreshAuditDaySeparators();
+      allLoaded = loaded >= total || rows.length < AUDIT_PAGE_SIZE;
 
-      countEl.textContent = total
-        ? `ทั้งหมด ${total.toLocaleString()} รายการ` + (loaded < total ? ` (แสดง ${loaded.toLocaleString()})` : "")
-        : "";
+      countEl.textContent = total ? `ทั้งหมด ${total.toLocaleString()} รายการ` : "";
 
       if (!loaded) {
         setState(
@@ -238,14 +245,22 @@ function initAuditPage() {
           "ระบบเก็บประวัติย้อนหลัง 90 วัน ข้อมูลที่เก่ากว่านั้นจะถูกลบอัตโนมัติ"
         );
       }
-      moreEl.hidden = loaded >= total;
+      // บอกว่าหมดแล้ว เฉพาะตอนที่มีรายการอยู่จริง (ไม่มีข้อมูลเลยมีข้อความ "ยังไม่มีประวัติ" อยู่แล้ว)
+      endEl.hidden = !(allLoaded && loaded > 0);
       syncHeadGutter();
+      requestAnimationFrame(fillIfNeeded);   // กรองแล้วแถวน้อยจนเลื่อนไม่ติด → โหลดต่อจนเต็มจอ
     } catch (err) {
       console.error("โหลดประวัติการใช้งานล้มเหลว", err);
       if (initial) setState("error", "โหลดประวัติไม่สำเร็จ", "ลองรีเฟรชหน้าอีกครั้ง");
     } finally {
       loading = false;
     }
+  }
+
+  // เนื้อหายังไม่สูงพอให้เลื่อน = ไม่มีทางเลื่อนไปโหลดต่อได้ → ต้องโหลดเองจนเต็มจอหรือหมด
+  function fillIfNeeded() {
+    if (loading || allLoaded) return;
+    if (scrollEl.scrollHeight <= scrollEl.clientHeight + 10) load(false);
   }
 
   // ---------- ตัวเลือกใน dropdown ----------
@@ -295,7 +310,6 @@ function initAuditPage() {
   toEl.addEventListener("change", () => { resetQuick(); load(true); });
   userEl.addEventListener("change", () => load(true));
   actionEl.addEventListener("change", () => load(true));
-  moreEl.addEventListener("click", () => load(false));
 
   let searchTimer;
   searchEl.addEventListener("input", () => {

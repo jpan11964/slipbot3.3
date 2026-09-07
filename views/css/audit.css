@@ -74,13 +74,13 @@
   box-shadow: 0 0 0 3px var(--blue-muted);
 }
 
-/* กลุ่มตัวกรองตรึงชิดขวา — ไม่งั้นพอ "ทั้งหมด N รายการ" โผล่/หาย ช่องกรองจะขยับไปมา */
+/* ไม่ตรึงชิดขวาแล้ว — ไหลต่อจากช่องจำนวนที่พบตามลำดับ เหมือนหน้าอื่นทุกหน้า
+   (ที่ช่องจำนวนกันความกว้างไว้ให้ตายตัว ปุ่มจึงไม่ขยับตอนข้อความโผล่/หาย) */
 .audit-filters {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-left: auto;
 }
 
 .audit-filters label {
@@ -155,38 +155,32 @@
   pointer-events: none;
 }
 
+/* ปุ่มล้างเป็นสีแดงตั้งแต่แรก (ไม่ต้องรอ hover) — เป็นปุ่มที่ "ทิ้งสิ่งที่กรองไว้"
+   ให้เห็นชัดตั้งแต่ยังไม่ชี้เมาส์ และหน้าตาตรงกันทุกหน้า */
 .audit-clear-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 7px 13px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--red);
   border-radius: var(--radius-sm);
   background: var(--white);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--red);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 .audit-clear-btn:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--white);
+  border-color: var(--red-dark);
+  color: var(--red-dark);
+  background: var(--red-muted);
 }
 
-.audit-count {
-  flex: 1 1 100%;
-  font-size: 12.5px;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.audit-count:empty {
-  display: none;
-}
+/* ความกว้าง/สีมาจาก .list-count ใน shared.css แล้ว (ใช้ร่วมกับหน้าอื่น)
+   ตอนว่างยังต้องกินที่ไว้เหมือนเดิม ปุ่มจะได้ไม่ขยับ — ที่ซ่อนคือบนมือถือเท่านั้น (mobile.css) */
 
 /* ===== ตาราง =====
    กรอบนอกไม่เลื่อน — หัวตารางอยู่นอกกล่องที่เลื่อน แถบเลื่อนจึงเริ่มใต้หัวตาราง
@@ -263,21 +257,16 @@
 
 .col-time { white-space: nowrap; }
 
-.audit-date {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--border-light);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
+/* ป้ายเวลาใช้ .time-pill จาก shared.css แล้ว (วันที่อยู่ใน tooltip + สีประจำวัน) */
+
+/* แถวคั่นวัน — ไม่ใช่แถวข้อมูล จึงต้องปลดเส้นคั่นและไฮไลต์ตอนชี้เมาส์ออก */
+.audit-table tbody tr.audit-day-row td {
+  padding: 0 14px;
+  border-bottom: none;
 }
 
-.audit-time {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--text);
+.audit-table tbody tr.audit-day-row:hover {
+  background: transparent;
 }
 
 .col-user { white-space: nowrap; }
@@ -349,6 +338,12 @@
   color: var(--text-muted);
 }
 
+/* จำเป็น — display: flex ด้านบน specificity สูงกว่า [hidden] ของเบราว์เซอร์
+   ถ้าไม่มีบรรทัดนี้ stateEl.hidden = true จะไม่ซ่อนจริง เหลือช่องว่างสูง 220px คาไว้ท้ายตาราง */
+.audit-state[hidden] {
+  display: none;
+}
+
 .audit-state i {
   font-size: 30px;
   opacity: 0.5;
@@ -381,32 +376,5 @@
   to { transform: rotate(360deg); }
 }
 
-/* ===== ปุ่มโหลดเพิ่ม ===== */
-.audit-more {
-  flex-shrink: 0;   /* ปุ่มโหลดเพิ่มต้องเห็นเสมอ ไม่โดนตารางเบียดหาย */
-  display: flex;
-  justify-content: center;
-  padding: 14px 0 0;
-}
-
-.audit-more:has(> [hidden]) {
-  padding: 0;       /* ไม่มีปุ่มก็ไม่ต้องกินที่ */
-}
-
-.audit-more-btn {
-  padding: 9px 22px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--white);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.audit-more-btn:hover {
-  border-color: var(--blue);
-  color: var(--blue-dark);
-}
+/* ปุ่ม "โหลดเพิ่ม" ถูกยกเลิกแล้ว — เลื่อนถึงล่างสุดแล้วโหลดต่อเอง
+   ข้อความท้ายรายการใช้ .app-list-end จาก shared.css (เหมือนหน้าอื่นทุกหน้า) */

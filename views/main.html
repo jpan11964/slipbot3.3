@@ -41,6 +41,17 @@
         <span class="modal-close" onclick="closeShopLinesModal()">&times;</span>
         <h2 id="modal-shop-title">รายการบัญชี <strong>LINE</strong> ร้าน</h2>
         <div id="line-list"></div> <!-- แสดงรายการบัญชี LINE -->
+
+        <!-- ทำกับทุกไลน์ในร้านรวดเดียว — เมนู Kebab ของแต่ละแถวยังทำรายตัวได้เหมือนเดิม -->
+        <div class="line-bulk-actions">
+            <button type="button" class="btn-line-bulk" id="btnCheckAllLines" onclick="checkAllLines()">
+                <i class="bi bi-arrow-repeat"></i> ตรวจสอบไลน์ทั้งหมด
+            </button>
+            <button type="button" class="btn-line-bulk" id="btnApplyWebhookAll" onclick="applyWebhookAll()">
+                <i class="bi bi-link-45deg"></i> ตั้ง Webhook ทั้งหมด
+            </button>
+        </div>
+
         <button class="btn-add-line" onclick="addNewLine()">+ เพิ่มบัญชีไลน์</button>
     </div>
 </div>

@@ -7,6 +7,10 @@
       <i class="bi bi-search"></i>
       <input type="text" id="customers-search" placeholder="ค้นหา ชื่อไลน์ / user / เบอร์โทร / ร้าน" autocomplete="off">
     </div>
+
+    <button type="button" class="customers-clear-btn" id="customers-clear" title="ล้างคำค้นหา">
+      <i class="bi bi-x-circle"></i> ล้าง
+    </button>
   </div>
 
   <div class="customers-card">
@@ -26,7 +30,9 @@
       <table class="customers-table">
         <tbody id="customers-body">
           <tr id="cust-loading">
-            <td colspan="4" style="text-align:center;font-weight:bold;color:#555;padding:20px;">กำลังโหลด...</td>
+            <td colspan="4">
+              <div class="app-loading"><div class="app-spinner"></div>กำลังโหลดข้อมูลลูกค้า...</div>
+            </td>
           </tr>
         </tbody>
       </table>

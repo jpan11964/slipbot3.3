@@ -102,12 +102,20 @@ function renderLineItem(prefix, line, index) {
 // ===== เปิดสวิตช์บอทแล้วตรวจไลน์ทั้งร้านให้อัตโนมัติ =====
 // เจอปัญหา → เปิด modal ไลน์ร้านนั้นให้เลย พร้อมบอกว่าไลน์ไหนเป็นอะไร
 // ไม่ await ใน handleToggle เพราะสวิตช์ต้องตอบสนองทันที ไม่ต้องรอ LINE API
-async function verifyShopLines(prefix) {
+// announce  = ขึ้นข้อความลอย "กำลังตรวจสอบ..." ตอนเริ่มไหม
+//   เปิดสวิตช์บอท → ต้องขึ้น เพราะไม่มีอย่างอื่นบอกว่าระบบกำลังทำอะไรอยู่
+//   กดปุ่ม "ตรวจสอบไลน์ทั้งหมด" → ไม่ต้อง ตัวปุ่มเปลี่ยนข้อความ+หมุนให้ดูอยู่แล้ว
+//
+// pointAtBad = กางข้อความลอยชี้ที่ไอคอน ! ของไลน์ตัวแรกที่เสียไหม
+//   เปิดสวิตช์บอท → ต้องชี้ เพราะ modal เด้งขึ้นมาเองโดยผู้ใช้ไม่ได้ขอ ต้องบอกว่าให้ดูตรงไหน
+//   กดปุ่ม "ตรวจสอบไลน์ทั้งหมด" → ไม่ต้อง ผู้ใช้จ้อง modal อยู่แล้ว
+//                                  ไฟแดงกับข้อความลอยด้านล่างที่ไล่ชื่อไลน์เสียครบทุกตัวก็พอ
+async function verifyShopLines(prefix, { announce = true, pointAtBad = true } = {}) {
     const shop = shopData.find(s => s.prefix === prefix);
     const lineCount = shop?.lines?.length || 0;
     if (!lineCount) return;
 
-    showLineToast(`กำลังตรวจสอบไลน์ของร้าน ${shop.name} (${lineCount} บัญชี)...`, true);
+    if (announce) showLineToast(`กำลังตรวจสอบไลน์ของร้าน ${shop.name} (${lineCount} บัญชี)...`, true);
 
     try {
         const res = await fetch("/api/check-shop-lines", {
@@ -131,7 +139,7 @@ async function verifyShopLines(prefix) {
         // มีปัญหา → เปิด modal ให้เห็นว่าไลน์ไหนแดง แล้วสรุปปัญหาในข้อความลอย
         const bad = data.bad || [];
         openShopLinesModal(prefix);
-        flashLineTooltip(bad[0]?.linename);   // กางข้อความชี้ไลน์ตัวแรกที่เสียให้เห็นเลย
+        if (pointAtBad) flashLineTooltip(bad[0]?.linename);   // กางข้อความชี้ไลน์ตัวแรกที่เสียให้เห็นเลย
 
         // แต่ละไลน์ที่มีปัญหาแยกเป็นบรรทัดของตัวเอง อ่านง่ายกว่ายัดรวมบรรทัดเดียว
         showLineToast(
@@ -282,6 +290,101 @@ async function applyWebhook(prefix, index) {
             icon.className = iconClass;
             icon.parentElement.classList.remove("checking");
         }
+        await loadShopLines(prefix);
+    }
+}
+
+// ===== ปุ่มทำกับทุกไลน์ในร้านรวดเดียว (ใน modal รายการไลน์) =====
+// ทั้งสองปุ่มยิง endpoint ที่วนทีละบัญชีฝั่ง server — ไม่วนยิงจาก client
+// เพราะถ้าผู้ใช้ปิด modal หรือเปลี่ยนหน้ากลางคัน งานจะค้างครึ่งๆ กลางๆ
+let lineBulkBusy = false;
+
+// เปิด/ปิดปุ่มทั้งสองพร้อมกัน + เปลี่ยนข้อความปุ่มที่กำลังทำงาน
+// การคืนค่าปุ่มต้องไม่ผูกกับ label — ตอนเรียกให้จบงานไม่ได้ส่ง label มาด้วย
+// (เคยพลาดตรงนี้ ปุ่มเลยค้างข้อความ "กำลังตรวจสอบ..." ไว้ถาวรหลังทำงานเสร็จ)
+function setLineBulkBusy(busy, activeBtnId, label) {
+    lineBulkBusy = busy;
+    for (const id of ["btnCheckAllLines", "btnApplyWebhookAll"]) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        btn.disabled = busy;
+        if (id !== activeBtnId) continue;
+
+        btn.classList.toggle("working", busy);
+        if (busy) {
+            if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+            if (label) btn.innerHTML = `<i class="bi bi-arrow-repeat"></i> ${label}`;
+        } else if (btn.dataset.originalHtml) {
+            btn.innerHTML = btn.dataset.originalHtml;
+        }
+    }
+}
+
+// ปุ่ม "ตรวจสอบไลน์ทั้งหมด" — ใช้ตัวเดียวกับที่เปิดสวิตช์บอทแล้วตรวจให้อัตโนมัติ
+async function checkAllLines() {
+    if (lineBulkBusy) return;
+    const prefix = currentShopPrefix;
+    const shop = shopData.find(s => s.prefix === prefix);
+    const lineCount = shop?.lines?.length || 0;
+    if (!lineCount) return showLineToast("ร้านนี้ยังไม่มีบัญชีไลน์", false);
+
+    setLineBulkBusy(true, "btnCheckAllLines", `กำลังตรวจสอบ ${lineCount} บัญชี...`);
+    try {
+        // ปุ่มบอกสถานะระหว่างทำงานอยู่แล้ว และ modal ก็เปิดอยู่ตรงหน้า
+        // ไฟแดง + ข้อความลอยด้านล่างที่ไล่ชื่อไลน์เสียครบทุกตัว เพียงพอแล้ว
+        await verifyShopLines(prefix, { announce: false, pointAtBad: false });
+        await loadShopLines(prefix);   // ดึงสถานะล่าสุดมาวาดใหม่ ไฟเขียว/แดงจะอัปเดตเอง
+    } finally {
+        setLineBulkBusy(false, "btnCheckAllLines");
+    }
+}
+
+// ปุ่ม "ตั้ง Webhook ทั้งหมด" — เขียนทับค่าที่ตั้งไว้ฝั่ง LINE ทุกบัญชี จึงต้องถามก่อน
+async function applyWebhookAll() {
+    if (lineBulkBusy) return;
+    const prefix = currentShopPrefix;
+    const shop = shopData.find(s => s.prefix === prefix);
+    const lineCount = shop?.lines?.length || 0;
+    if (!lineCount) return showLineToast("ร้านนี้ยังไม่มีบัญชีไลน์", false);
+
+    if (!confirm(`ตั้ง Webhook URL ของระบบให้ไลน์ทั้งหมด ${lineCount} บัญชีของร้าน ${shop.name} ใช่ไหม?
+
+ค่าเดิมที่ตั้งไว้ฝั่ง LINE จะถูกเขียนทับทุกบัญชี`)) return;
+
+    setLineBulkBusy(true, "btnApplyWebhookAll", `กำลังตั้ง Webhook ${lineCount} บัญชี...`);
+
+    try {
+        const res = await fetch("/api/apply-webhook-all", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefix }),
+        });
+        const data = await res.json();
+
+        // เอาธงที่ได้กลับมาทาลง cache ก่อน ไฟจะได้เปลี่ยนพร้อมข้อความ ไม่ต้องรอ API รอบสอง
+        (data.results || []).forEach(r => {
+            const line = shop.lines.find(l => String(l.channel_id) === String(r.channelId));
+            if (line && r.flags) Object.assign(line, r.flags);
+        });
+        renderLineList(prefix);
+
+        if (data.success) {
+            showLineToast(`ตั้ง Webhook ให้ร้าน ${shop.name} ครบทุกบัญชีแล้ว (${data.total} บัญชี)`, true);
+        } else {
+            // ไม่ต้องกางข้อความชี้ที่ไอคอน ! ด้วยเหตุผลเดียวกับปุ่ม "ตรวจสอบไลน์ทั้งหมด"
+            // (ผู้ใช้จ้อง modal อยู่แล้ว ไฟแดง + รายชื่อในข้อความลอยด้านล่างพอ)
+            const bad = data.bad || [];
+            showLineToast(
+                `ร้าน ${shop.name} ตั้ง Webhook ไม่สำเร็จ ${bad.length} จาก ${data.total} บัญชี`,
+                false,
+                { detailLines: bad.map(r => `${r.linename}: ${r.message || "ไม่ทราบสาเหตุ"}`) },
+            );
+        }
+    } catch (err) {
+        console.error("ตั้ง Webhook ทั้งร้านล้มเหลว:", err);
+        showLineToast("ตั้ง Webhook ไม่สำเร็จ — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", false);
+    } finally {
+        setLineBulkBusy(false, "btnApplyWebhookAll");
         await loadShopLines(prefix);
     }
 }
@@ -1216,10 +1319,20 @@ let lineHighlightTimer = null;
 
 function flashLineTooltip(linename) {
     pendingLineHighlight = linename ?? "";
-    applyLineHighlight();
-    // ถ้ารายการสดยังมาไม่ถึง ให้เลิกรอหลัง 10 วิ จะได้ไม่ค้างไปทาให้ครั้งถัดไป
     clearTimeout(lineHighlightTimer);
-    lineHighlightTimer = setTimeout(() => { pendingLineHighlight = null; }, 10000);
+
+    // ไม่ทาทันที — ทุกจุดที่เรียกฟังก์ชันนี้ตามด้วย loadShopLines() ที่วาดรายการทับอยู่แล้ว
+    // ถ้าทาตอนนี้ ข้อความจะโผล่ขึ้นมาแล้วหายไปพร้อม DOM เก่า จากนั้นโผล่อีกรอบตอนรายการสดมาถึง
+    // = ผู้ใช้เห็นข้อความเด้งสองครั้ง (แถม scrollIntoView ก็เลื่อนจอสองรอบด้วย)
+    // จึงปล่อยให้ applyLineHighlight(true) ใน loadShopLines() ทาทีเดียวจบ
+    //
+    // ตัวจับเวลาข้างล่างเป็นแผนสำรอง เผื่อโหลดรายการสดล้มเหลวจนไม่มีรอบสุดท้ายมาเลย
+    // ตั้งเป็นรอบ "ไม่ final" เพราะถ้ารายการสดตามมาทีหลัง ยังต้องทาซ้ำได้อยู่
+    lineHighlightTimer = setTimeout(() => {
+        applyLineHighlight();
+        // ถ้ารายการสดยังมาไม่ถึง ให้เลิกรอหลัง 10 วิ จะได้ไม่ค้างไปทาให้ครั้งถัดไป
+        lineHighlightTimer = setTimeout(() => { pendingLineHighlight = null; }, 10000);
+    }, 2500);
 }
 
 // final = true เมื่อเรียกจากรายการสดที่โหลดเสร็จแล้ว (ไม่มีการวาดทับอีก) จึงเลิกรอได้

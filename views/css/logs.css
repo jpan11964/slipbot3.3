@@ -27,12 +27,6 @@
   max-width: 340px;
 }
 
-/* ตรึงกลุ่มตัวกรองไว้ขวาสุด — ไม่งั้นพอ "พบ N รายการ" โผล่/หายตอนพิมพ์ค้นหา
-   ช่องวันที่จะขยับไปมา กดพลาดได้ */
-.logs-range {
-  margin-left: auto;
-}
-
 .logs-search i {
   position: absolute;
   left: 11px;
@@ -129,39 +123,58 @@
 
 .logs-range input:focus { border-color: var(--blue); }
 
+/* บอกขอบเขตที่เลือกได้ ให้เห็นก่อนกดปฏิทิน — ไม่งั้นเจอวันที่ถูก disable แล้วงงว่าทำไมเลือกไม่ได้ */
+.logs-date-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.logs-date-hint i {
+  font-size: 12px;
+  color: var(--blue);
+}
+
+/* ปุ่มล้างเป็นสีแดงตั้งแต่แรก — ให้ตรงกับหน้าอื่นทุกหน้า (ดูหมายเหตุใน audit.css) */
 .logs-clear-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--red);
   border-radius: var(--radius-sm);
   background: var(--white);
-  color: var(--text-muted);
+  color: var(--red);
   font-family: inherit;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
 .logs-clear-btn:hover {
-  background: var(--bg);
-  color: var(--text);
+  border-color: var(--red-dark);
+  background: var(--red-muted);
+  color: var(--red-dark);
 }
 
+/* เว้นที่ไว้ให้ตายตัว (ไม่ใช้ margin-left: auto ดันกลุ่มปุ่มไปขวาสุดแล้ว)
+   ไม่งั้นพอ "พบ N รายการ" โผล่/หายตอนพิมพ์ค้นหา ช่องวันที่จะขยับไปมา กดพลาดได้
+   ใช้ min-width ไม่ใช่ width — ข้อความยาวกว่านั้น (เช่นตอนกดมาจากการแจ้งเตือน) จะได้ไม่โดนตัด */
 .logs-count {
+  flex-shrink: 0;
+  min-width: 130px;
   font-size: 12.5px;
   color: var(--text-muted);
   font-weight: 500;
   white-space: nowrap;
 }
 
-/* ว่างเมื่อไม่ได้ค้นหาข้อความ — ต้องซ่อน ไม่งั้นบนมือถือจะกินพื้นที่เป็นแถวเปล่า
-   (mobile.css ตั้ง flex: 1 1 100% ไว้) */
-.logs-count:empty {
-  display: none;
-}
+/* ตอนว่างต้องกินที่ไว้เหมือนเดิม (ไม่ซ่อน) ปุ่มจะได้ไม่ขยับตอนข้อความโผล่/หาย
+   ที่ต้องซ่อนคือบนมือถือเท่านั้น เพราะที่นั่นมันกินเต็มแถว — กฎอยู่ใน mobile.css */
 
 /* log ที่ถูกเด้งมาจากการแจ้งเตือน */
 .log-entry.log-highlight {
@@ -230,28 +243,7 @@
 }
 
 /* ป้ายเวลา — แยกออกจากข้อความ อ่านง่ายและเรียงตรงกันทุกบรรทัด */
-.log-time {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 2px 9px;
-  border-radius: 99px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 11.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;   /* ตัวเลขกว้างเท่ากัน คอลัมน์จึงตรง */
-  letter-spacing: 0.2px;
-}
-
-/* วันที่จะโผล่เฉพาะ log ที่ไม่ใช่ของวันนี้ */
-.log-date {
-  color: var(--blue-dark);
-  font-size: 10.5px;
-  font-weight: 700;
-}
+/* ป้ายเวลาใช้ .time-pill จาก shared.css แล้ว — ที่นี่เหลือแค่ของเฉพาะหน้า Logs */
 
 .log-msg {
   flex: 1;
@@ -259,7 +251,8 @@
   font-family: 'Noto Sans Thai', 'Inter', sans-serif;
 }
 
-.log-entry.error .log-time {
+/* log ที่เป็น error — ป้ายเวลาเป็นแดง ทับสีประจำวันไปเลย เพราะ "นี่คือ error" สำคัญกว่า "นี่คือวันไหน" */
+.log-entry.error .time-pill {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.35);
   color: var(--red);

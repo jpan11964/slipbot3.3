@@ -28,10 +28,6 @@
           <i class="bi bi-chevron-down dashboard-line-caret"></i>
         </button>
         <div class="dashboard-line-menu" id="dashLineMenu" hidden>
-          <label class="dashboard-line-item dashboard-line-all">
-            <input type="checkbox" id="dashLineAll">
-            <span>เลือกทั้งหมด</span>
-          </label>
           <div class="dashboard-line-list" id="dashLineList"></div>
         </div>
       </div>
@@ -42,6 +38,10 @@
       <label>ถึง
         <input type="datetime-local" id="dashTo" autocomplete="off">
       </label>
+
+      <span class="dashboard-date-hint">
+        <i class="bi bi-info-circle"></i> เลือกได้ย้อนหลังไม่เกิน 3 วัน
+      </span>
     </div>
   </div>
 
@@ -68,8 +68,8 @@
       <table class="dashboard-table">
         <tbody id="slip-results-body">
           <tr id="loading-row">
-            <td colspan="9" style="text-align:center; font-weight: bold; color: #555;">
-              กำลังโหลด...
+            <td colspan="9">
+              <div class="app-loading"><div class="app-spinner"></div>กำลังโหลดข้อมูล...</div>
             </td>
           </tr>
         </tbody>

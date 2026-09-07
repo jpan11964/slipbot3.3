@@ -9,6 +9,8 @@
         <input type="text" id="auditSearch" placeholder="ค้นหาชื่อผู้ใช้ / ร้าน / รายละเอียด" autocomplete="off">
       </div>
 
+      <div class="audit-count list-count" id="auditCount"></div>
+
       <div class="audit-filters">
         <button type="button" class="audit-clear-btn" id="auditClear" title="ล้างตัวกรอง">
           <i class="bi bi-x-circle"></i> ล้าง
@@ -45,8 +47,6 @@
           </select>
         </div>
       </div>
-
-      <div class="audit-count" id="auditCount"></div>
     </div>
 
     <!-- หัวตารางแยกออกมาจากกล่องที่เลื่อน เพื่อให้แถบเลื่อนเริ่มใต้หัวตาราง
@@ -81,11 +81,12 @@
         </table>
 
         <div class="audit-state" id="auditState" hidden></div>
-      </div>
-    </div>
 
-    <div class="audit-more">
-      <button type="button" class="audit-more-btn" id="auditMore" hidden>โหลดเพิ่ม</button>
+        <!-- เลื่อนถึงล่างสุดแล้วโหลดต่อเอง — ไม่มีปุ่ม "โหลดเพิ่ม" เหมือนหน้าอื่นทุกหน้า -->
+        <div class="app-list-end" id="auditEnd" hidden>
+          <i class="bi bi-check2-circle"></i> แสดงครบทุกรายการแล้ว
+        </div>
+      </div>
     </div>
   </div>
 </div>

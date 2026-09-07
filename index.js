@@ -2022,22 +2022,17 @@ app.post("/api/check-shop-lines", isAuthenticated, async (req, res) => {
 // ต่างจาก /api/set-webhook ตรงที่ไม่ต้องส่ง accessToken มาจาก client
 // ใช้ token ที่เก็บไว้ใน DB ก่อน ถ้าใช้ไม่ได้แล้วค่อยออกใหม่จาก channel_id + secret
 // แล้วบันทึก token ใหม่กลับลง DB ด้วย (ไลน์ที่ token หมดอายุจึงกลับมาใช้ได้ในคลิกเดียว)
-app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
-  const { prefix, channelId } = req.body || {};
-  if (!prefix || !channelId) {
-    return res.status(400).json({ success: false, message: "ต้องระบุ prefix และ channelId" });
+// ตั้ง Webhook ให้ไลน์เดียว — แยกออกมาเพื่อให้ทั้งปุ่มรายตัวและปุ่ม "ตั้งทั้งหมด" ใช้ตัวเดียวกัน
+// (ไม่เรียก restartWebhooks() ในนี้ — ให้ผู้เรียกจัดการเอง ตอนทำทั้งร้านจะได้เรียกรอบเดียวพอ)
+async function applyWebhookToLine(prefix, line) {
+  const channelId = line.channel_id;
+  const linename = line.linename || `channel ...${String(channelId).slice(-4)}`;
+
+  if (!line.secret_token) {
+    return { success: false, linename, channelId, message: "ไลน์นี้ยังไม่มี Secret Token" };
   }
 
-  try {
-    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
-    const line = shop?.lines?.find((l) => String(l.channel_id) === String(channelId));
-    if (!line) return res.status(404).json({ success: false, message: "ไม่พบบัญชีไลน์นี้ในร้าน" });
-    if (!line.secret_token) {
-      return res.json({ success: false, message: "ไลน์นี้ยังไม่มี Secret Token" });
-    }
-
-    const linename = line.linename || `channel ...${String(channelId).slice(-4)}`;
-    const expected = `${baseURL}/webhook/${prefix}/${String(channelId).slice(-4)}.bot`;
+  const expected = `${baseURL}/webhook/${prefix}/${String(channelId).slice(-4)}.bot`;
 
     // ---- 1) ขอ access token ใหม่เสมอ ----
     // ใช้หลักการเดียวกับ "แก้ไขไลน์แล้วกดบันทึก" ซึ่งเป็นวิธีที่ใช้แก้ไลน์หลุดได้จริงมาตลอด
@@ -2053,13 +2048,14 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
       await clearLineTokenError({ prefix, channelId });
     } catch (err) {
       await markLineTokenError({ prefix, channelId, linename, reason: err.message });
-      return res.json({
+      return {
         success: false,
         linename,
+        channelId,
         tokenFailed: true,
         message: "ไม่สามารถขอ access token ได้ ไลน์นี้มีปัญหา กรุณาตรวจสอบไลน์นี้",
         flags: { tokenError: true, webhookError: line.webhookError === true },
-      });
+      };
     }
 
     // ---- 2) ตั้ง Webhook URL ----
@@ -2071,13 +2067,14 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
     if (!putRes.ok) {
       const err = await putRes.json().catch(() => ({}));
       await setLineWebhookError({ prefix, channelId, bad: true });
-      return res.json({
+      return {
         success: false,
         linename,
+        channelId,
         webhook: { expected },
         message: `ตั้ง Webhook ไม่สำเร็จ: ${err.message || putRes.status}`,
         flags: { tokenError: false, webhookError: true },
-      });
+      };
     }
 
     // ---- 3) อ่านกลับมายืนยัน + ให้ LINE ลองยิงมาจริง ----
@@ -2110,14 +2107,60 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
     const stillBad = result.webhook.matched === false;
     await setLineWebhookError({ prefix, channelId, bad: stillBad });
 
-    restartWebhooks();   // token อาจเปลี่ยน → รีเฟรช cache
-    res.json({
-      success: true, linename, ...result,
+    return {
+      success: true, linename, channelId, ...result,
       flags: { tokenError: false, webhookError: stillBad },
-    });
+    };
+}
+
+app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
+  const { prefix, channelId } = req.body || {};
+  if (!prefix || !channelId) {
+    return res.status(400).json({ success: false, message: "ต้องระบุ prefix และ channelId" });
+  }
+
+  try {
+    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
+    const line = shop?.lines?.find((l) => String(l.channel_id) === String(channelId));
+    if (!line) return res.status(404).json({ success: false, message: "ไม่พบบัญชีไลน์นี้ในร้าน" });
+
+    const result = await applyWebhookToLine(prefix, line);
+    restartWebhooks();   // token อาจเปลี่ยน → รีเฟรช cache
+    res.json(result);
   } catch (err) {
     console.error("❌ apply-webhook error:", err);
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดขณะตั้ง Webhook" });
+  }
+});
+
+// ===== ตั้ง Webhook ให้ทุกไลน์ในร้านรวดเดียว =====
+// ทำทีละบัญชีตามลำดับ ไม่ยิงพร้อมกัน — แต่ละไลน์ยิง LINE API ถึง 4 ครั้ง (ออก token, PUT, อ่านกลับ, ทดสอบส่ง)
+// เรียก restartWebhooks() รอบเดียวตอนจบ ไม่ใช่ทุกไลน์
+app.post("/api/apply-webhook-all", isAuthenticated, async (req, res) => {
+  const { prefix } = req.body || {};
+  if (!prefix) return res.status(400).json({ success: false, message: "ต้องระบุ prefix" });
+
+  try {
+    const shop = await Shop.findOne({ prefix }, { bonusImage: 0, passwordImage: 0 });
+    if (!shop) return res.status(404).json({ success: false, message: "ไม่พบร้านนี้" });
+
+    const results = [];
+    for (const line of shop.lines || []) {
+      if (!line?.channel_id) continue;
+      results.push(await applyWebhookToLine(prefix, line));
+    }
+
+    restartWebhooks();
+    const bad = results.filter((r) => !r.success);
+    res.json({
+      success: bad.length === 0,
+      total: results.length,
+      results,
+      bad,   // เฉพาะไลน์ที่ตั้งไม่สำเร็จ — หน้าเว็บเอาไปขึ้นข้อความได้เลย
+    });
+  } catch (err) {
+    console.error("❌ apply-webhook-all error:", err);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดขณะตั้ง Webhook ทั้งร้าน" });
   }
 });
 
