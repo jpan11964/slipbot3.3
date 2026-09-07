@@ -991,6 +991,13 @@
   font-family: 'Consolas', monospace;
 }
 
+/* ปุ่มลอย "เพิ่มร้านค้า" อยู่มุมล่างกลางที่เดียวกับข้อความลอย — ซ่อนระหว่างที่ข้อความโชว์อยู่
+   ใช้ display แทน opacity เพราะเป็น property ที่ไม่มีอะไรมา override
+   และไม่ทิ้งปุ่มที่มองไม่เห็นค้างไว้ให้กดโดนพลาด (แพตเทิร์นเดียวกับตอนเปิด sidebar) */
+body.line-toast-open .main-page .btn-add-shop {
+  display: none;
+}
+
 .line-toast.ok i { color: #34d399; }
 .line-toast.fail { background: var(--red-dark); }
 .line-toast.fail i { color: #fff; }

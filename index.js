@@ -1861,7 +1861,7 @@ async function checkLineAccount(prefix, line) {
     await clearLineTokenError({ prefix, channelId });
   } catch (err) {
     result.token = { ok: false, message: err.message };
-    result.problems.push("ขอ access token ไม่สำเร็จ — Channel ID หรือ Secret Token ไม่ถูกต้อง");
+    result.problems.push("ไม่สามารถขอ access token ได้ ไลน์นี้มีปัญหา กรุณาตรวจสอบไลน์นี้");
     await markLineTokenError({ prefix, channelId, linename, reason: err.message });
     result.flags = { tokenError: true, webhookError: line.webhookError === true };
     return result;   // ไม่มี token ก็ตรวจ webhook ต่อไม่ได้
@@ -1990,42 +1990,30 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
     const linename = line.linename || `channel ...${String(channelId).slice(-4)}`;
     const expected = `${baseURL}/webhook/${prefix}/${String(channelId).slice(-4)}.bot`;
 
-    // ---- 1) ตรวจ token ที่มีอยู่ใน DB ก่อน ----
-    let accessToken = line.access_token || "";
-    let tokenSource = "เดิม";
-    let valid = false;
-
-    if (accessToken) {
-      try {
-        const infoRes = await fetch("https://api.line.me/v2/bot/info", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        valid = infoRes.ok;
-      } catch { valid = false; }
+    // ---- 1) ขอ access token ใหม่เสมอ ----
+    // ใช้หลักการเดียวกับ "แก้ไขไลน์แล้วกดบันทึก" ซึ่งเป็นวิธีที่ใช้แก้ไลน์หลุดได้จริงมาตลอด
+    // เดิมเช็ค token เดิมก่อนแล้วใช้ต่อถ้ายังไม่หมดอายุ — แต่ token ที่ "ยังไม่ 401"
+    // ไม่ได้แปลว่าตั้ง webhook ผ่าน จึงตัดขั้นตอนนั้นทิ้ง ขอใหม่ให้เหมือนกันทุกครั้ง
+    let accessToken;
+    try {
+      ({ access_token: accessToken } = await issueChannelToken(channelId, line.secret_token));
+      await Shop.updateOne(
+        { prefix, "lines.channel_id": String(channelId) },
+        { $set: { "lines.$.access_token": accessToken } }
+      );
+      await clearLineTokenError({ prefix, channelId });
+    } catch (err) {
+      await markLineTokenError({ prefix, channelId, linename, reason: err.message });
+      return res.json({
+        success: false,
+        linename,
+        tokenFailed: true,
+        message: "ไม่สามารถขอ access token ได้ ไลน์นี้มีปัญหา กรุณาตรวจสอบไลน์นี้",
+        flags: { tokenError: true, webhookError: line.webhookError === true },
+      });
     }
 
-    // ---- 2) ใช้ไม่ได้ → ออกใหม่แล้วบันทึกลง DB ----
-    if (!valid) {
-      try {
-        ({ access_token: accessToken } = await issueChannelToken(channelId, line.secret_token));
-        await Shop.updateOne(
-          { prefix, "lines.channel_id": String(channelId) },
-          { $set: { "lines.$.access_token": accessToken } }
-        );
-        await clearLineTokenError({ prefix, channelId });
-        tokenSource = "ออกใหม่";
-      } catch (err) {
-        await markLineTokenError({ prefix, channelId, linename, reason: err.message });
-        return res.json({
-          success: false,
-          linename,
-          message: "ขอ access token ไม่สำเร็จ — Channel ID หรือ Secret Token ไม่ถูกต้อง",
-          flags: { tokenError: true, webhookError: line.webhookError === true },
-        });
-      }
-    }
-
-    // ---- 3) ตั้ง Webhook URL ----
+    // ---- 2) ตั้ง Webhook URL ----
     const putRes = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
       method: "PUT",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -2043,8 +2031,8 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
       });
     }
 
-    // ---- 4) อ่านกลับมายืนยัน + ให้ LINE ลองยิงมาจริง ----
-    const result = { tokenSource, webhook: { expected }, delivery: {} };
+    // ---- 3) อ่านกลับมายืนยัน + ให้ LINE ลองยิงมาจริง ----
+    const result = { webhook: { expected }, delivery: {} };
     try {
       const epRes = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -2067,8 +2055,10 @@ app.post("/api/apply-webhook", isAuthenticated, async (req, res) => {
       result.delivery = { ok: false, detail: err.message };
     }
 
-    // ตั้งสำเร็จและ LINE ยิงมาถึงจริงเท่านั้นถึงจะถือว่าหายดี
-    const stillBad = result.webhook.matched === false || result.delivery.ok === false;
+    // URL ตั้งถูกแล้ว = งานของปุ่มนี้สำเร็จ
+    // ส่วน "LINE ยิงมาไม่ถึง" มักเป็นเพราะเซิร์ฟเวอร์กำลังตื่นจากหลับ (Render free tier)
+    // ไม่ใช่การตั้งค่าผิด จึงไม่ติดธงแดง แค่บอกให้รู้ว่ายังทดสอบไม่ผ่าน
+    const stillBad = result.webhook.matched === false;
     await setLineWebhookError({ prefix, channelId, bad: stillBad });
 
     restartWebhooks();   // token อาจเปลี่ยน → รีเฟรช cache

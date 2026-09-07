@@ -259,15 +259,19 @@ async function applyWebhook(prefix, index) {
 
         if (!data.success) {
             flashLineTooltip(line.linename);
-            showLineToast(`ตั้ง Webhook ให้ "${line.linename}" ไม่สำเร็จ — ${data.message || "ไม่ทราบสาเหตุ"}`, false, data);
+            // ขอ token ไม่ได้ = ปัญหาที่ตัวไลน์ ไม่ใช่เรื่อง webhook — ใช้ข้อความของ backend ตรงๆ
+            const why = data.tokenFailed ? data.message : `ตั้ง Webhook ไม่สำเร็จ — ${data.message || "ไม่ทราบสาเหตุ"}`;
+            showLineToast(`"${line.linename}" — ${why}`, false, data);
         } else if (data.delivery?.ok === false) {
-            // ตั้งสำเร็จแต่ LINE ยิงมาไม่ถึง = URL ปลายทางยังเข้าไม่ได้ (เช่น ngrok ปิดอยู่)
+            // URL ตั้งถูกแล้ว แต่ LINE ยิงมาทดสอบไม่ถึง
+            // ส่วนใหญ่คือเซิร์ฟเวอร์กำลังตื่นจากหลับ (Render free tier) ไม่ใช่ตั้งค่าผิด
+            // จึงบอกแบบไม่ตกใจ และไม่ติดธงแดงให้ไลน์
             showLineToast(
-                `ตั้ง Webhook ให้ "${line.linename}" แล้ว แต่ LINE ยิงมาไม่ถึง — ${data.delivery.detail || "ตรวจสอบว่าเซิร์ฟเวอร์เข้าถึงได้จากภายนอก"}`,
-                false, data);
+                `ตั้ง Webhook ให้ "${line.linename}" เรียบร้อยแล้ว — แต่ทดสอบส่งยังไม่ผ่าน (${data.delivery.detail || "timeout"}) ` +
+                `ถ้าเซิร์ฟเวอร์เพิ่งตื่น ลองกด "ตรวจสอบไลน์" ซ้ำอีกครั้ง`,
+                true);
         } else {
-            const extra = data.tokenSource === "ออกใหม่" ? " (ออก access token ใหม่ให้ด้วย)" : "";
-            showLineToast(`ตั้ง Webhook ให้ "${line.linename}" เรียบร้อย${extra}`, true);
+            showLineToast(`ตั้ง Webhook ให้ "${line.linename}" เรียบร้อย (ออก access token ใหม่ให้ด้วย)`, true);
         }
     } catch (err) {
         console.error("ตั้ง Webhook ล้มเหลว:", err);
@@ -290,7 +294,7 @@ function showLineToast(message, ok = true, result = null) {
     if (!el) {
         el = document.createElement("div");
         el.id = "lineToast";
-        el.onclick = () => el.classList.remove("show");   // กดเพื่อปิดก่อนเวลาได้
+        el.onclick = () => hideLineToast();   // กดเพื่อปิดก่อนเวลาได้
         document.body.appendChild(el);
     }
 
@@ -340,9 +344,18 @@ function showLineToast(message, ok = true, result = null) {
     // (แท็บพื้นหลังจะไม่เห็น toast เลย)
     void el.offsetWidth;
     el.classList.add("show");
+    // ปุ่มลอย "เพิ่มร้านค้า" อยู่มุมล่างกลางเหมือนกัน จะบังข้อความ — ซ่อนไว้ก่อน
+    document.body.classList.add("line-toast-open");
+
     clearTimeout(lineToastTimer);
     // ข้อความที่มี URL ให้อ่าน ต้องค้างนานกว่าปกติ
-    lineToastTimer = setTimeout(() => el.classList.remove("show"), hasDetail ? 12000 : ok ? 4000 : 7000);
+    lineToastTimer = setTimeout(hideLineToast, hasDetail ? 12000 : ok ? 4000 : 7000);
+}
+
+function hideLineToast() {
+    clearTimeout(lineToastTimer);
+    document.getElementById("lineToast")?.classList.remove("show");
+    document.body.classList.remove("line-toast-open");
 }
 
 // วาดรายการไลน์จาก shopData (cache) — ใช้ตอนเปิด modal และตอนอัปเดตสถานะทันทีหลังกดปุ่ม
