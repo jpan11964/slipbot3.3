@@ -543,13 +543,39 @@ app.post("/api/slip-results", async (req, res) => {
 });
 
 // GET: ดึง slip ภายใน 24 ชม. แบบแบ่งหน้า (ล่าสุดก่อน) — ?skip=0&limit=200
+// รองรับตัวกรอง: q (ชื่อผู้ใช้/เบอร์โทร/จำนวนเงิน), status (คั่นด้วย , เลือกได้หลายค่า),
+// shops (คั่นด้วย , = ชื่อไลน์ที่ report เข้ามา เก็บในฟิลด์ shop เลือกได้หลายค่า), from/to (ISO)
 app.get("/api/slip-results", async (req, res) => {
   try {
     const skip = Math.max(0, parseInt(req.query.skip) || 0);
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const results = await SlipResult.find({ createdAt: { $gte: oneDayAgo } })
+    const filter = {};
+
+    const from = req.query.from ? new Date(req.query.from) : null;
+    const to = req.query.to ? new Date(req.query.to) : null;
+    filter.createdAt = { $gte: from && !isNaN(from) ? from : oneDayAgo };
+    if (to && !isNaN(to)) filter.createdAt.$lte = to;
+
+    const statusList = String(req.query.status || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (statusList.length) filter.status = { $in: statusList };
+
+    const shopList = String(req.query.shops || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (shopList.length) filter.shop = { $in: shopList };
+
+    const q = String(req.query.q || "").trim();
+    if (q) {
+      const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const or = [{ lineName: re }, { phoneNumber: re }, { ref: re }];
+      // จำนวนเงินเก็บเป็น Number — แปลงเป็น string ก่อน match บางส่วนได้ (เช่น "50" เจอ 500)
+      if (/^\d+$/.test(q)) {
+        or.push({ $expr: { $regexMatch: { input: { $toString: "$amount" }, regex: q } } });
+      }
+      filter.$or = or;
+    }
+
+    const results = await SlipResult.find(filter)
       .sort({ createdAt: -1 })   // ล่าสุดก่อน
       .skip(skip)
       .limit(limit);
@@ -558,6 +584,24 @@ app.get("/api/slip-results", async (req, res) => {
   } catch (err) {
     console.error("❌ โหลด slip results ล้มเหลว:", err.message);
     res.status(500).json({ message: "โหลดข้อมูลไม่สำเร็จ" });
+  }
+});
+
+// GET: ตัวเลือกสำหรับ dropdown กรอง (สถานะการตรวจสลิป + รายชื่อไลน์) — เอาเฉพาะค่าที่มีข้อมูลจริงภายใน 24 ชม.
+app.get("/api/slip-results/filters", async (req, res) => {
+  try {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [statuses, shops] = await Promise.all([
+      SlipResult.distinct("status", { createdAt: { $gte: oneDayAgo } }),
+      SlipResult.distinct("shop", { createdAt: { $gte: oneDayAgo } }),
+    ]);
+    res.json({
+      statuses: statuses.filter(Boolean).sort((a, b) => a.localeCompare(b, "th")),
+      shops: shops.filter(Boolean).sort((a, b) => a.localeCompare(b, "th")),
+    });
+  } catch (err) {
+    console.error("❌ โหลดตัวกรอง slip-results ล้มเหลว:", err.message);
+    res.status(500).json({ message: "โหลดตัวกรองไม่สำเร็จ" });
   }
 });
 

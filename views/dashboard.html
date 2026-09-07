@@ -1,6 +1,50 @@
 <div class="dashboard-page">
   <h1 class="page-title">แดชบอร์ดตรวจสลิป</h1>
 
+  <div class="dashboard-toolbar">
+    <div class="dashboard-search">
+      <i class="bi bi-search"></i>
+      <input type="text" id="dashSearch" placeholder="ค้นหา ชื่อผู้ใช้ / เบอร์โทร / จำนวนเงิน / REF" autocomplete="off">
+    </div>
+
+    <div class="dashboard-count" id="dashCount"></div>
+
+    <div class="dashboard-filters">
+      <button type="button" class="dashboard-clear-btn" id="dashClear" title="ล้างตัวกรอง">
+        <i class="bi bi-x-circle"></i> ล้าง
+      </button>
+
+      <div class="dashboard-select">
+        <i class="bi bi-clipboard-check"></i>
+        <select id="dashStatus">
+          <option value="">ทุกกรณีการตรวจสลิป</option>
+        </select>
+      </div>
+
+      <div class="dashboard-line-filter" id="dashLineFilter">
+        <button type="button" class="dashboard-line-toggle" id="dashLineToggle">
+          <i class="bi bi-broadcast"></i>
+          <span id="dashLineLabel">ทุกไลน์</span>
+          <i class="bi bi-chevron-down dashboard-line-caret"></i>
+        </button>
+        <div class="dashboard-line-menu" id="dashLineMenu" hidden>
+          <label class="dashboard-line-item dashboard-line-all">
+            <input type="checkbox" id="dashLineAll" checked>
+            <span>เลือกทั้งหมด</span>
+          </label>
+          <div class="dashboard-line-list" id="dashLineList"></div>
+        </div>
+      </div>
+
+      <label>ตั้งแต่
+        <input type="datetime-local" id="dashFrom" autocomplete="off">
+      </label>
+      <label>ถึง
+        <input type="datetime-local" id="dashTo" autocomplete="off">
+      </label>
+    </div>
+  </div>
+
   <div class="dashboard-container">
     <!-- หัวตารางแยกออกจากส่วน scroll → scrollbar เริ่มที่ใต้หัว (จัดคอลัมน์ตรงด้วย scrollbar-gutter) -->
     <div class="dashboard-head" id="dashboard-head">

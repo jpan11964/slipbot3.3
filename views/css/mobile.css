@@ -482,6 +482,87 @@
   body.sidebar-open .main-page .btn-add-shop {
     display: none;
   }
+
+  /* ---------- หน้าแดชบอร์ดตรวจสลิป ----------
+     แถบค้นหา+ตัวกรองเดิมเป็น flex-wrap ที่แต่ละชิ้นกว้างตามเนื้อหา
+     พอจอแคบจะแตกเป็นแถวไม่เท่ากัน ดูรกและกินพื้นที่
+     → วางเป็นตาราง 2 คอลัมน์เท่ากัน แบบเดียวกับหน้าประวัติการใช้งาน (audit-filters) */
+  .dashboard-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .dashboard-filters {
+    flex: 1 1 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  /* ปุ่มล้างกินเต็มแถว — เป็นตัวเปิด/ปิดของทั้งแถบ */
+  .dashboard-filters > .dashboard-clear-btn {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-clear-btn {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .dashboard-select {
+    display: flex;
+    min-width: 0;
+  }
+
+  .dashboard-select select {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    padding: 10px 28px 10px 30px;
+  }
+
+  .dashboard-line-toggle {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 10px;
+  }
+
+  /* ป้าย "ตั้งแต่/ถึง" ขึ้นบรรทัดบนช่อง ไม่งั้นช่องวันที่แคบจนกดยาก */
+  .dashboard-filters label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .dashboard-filters input[type="datetime-local"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+  }
+
+  .dashboard-page {
+    padding-bottom: 10px;
+  }
+
+  /* เลื่อนดูรายการ = ยุบแถบตัวกรอง ให้ตารางได้พื้นที่เต็มจอ
+     (เลื่อนกลับขึ้นบนสุดแล้วกางคืนเอง — ดู updateDashCompact ใน dashboard.js)
+     ใช้ max-height แทน display: none เพื่อให้ยุบแบบมีอนิเมชัน */
+  .dashboard-toolbar {
+    max-height: 460px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+  }
+
+  .dashboard-page.compact .dashboard-toolbar {
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 /* จอเล็กมาก (มือถือแนวตั้งทั่วไป) */

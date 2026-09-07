@@ -16,6 +16,188 @@ function isSlipDisplayed(prefix) {
   return !sel || sel.includes(prefix);
 }
 
+// ===== แถบค้นหา/ตัวกรอง (dashboard-toolbar) — อ่านค่าจาก DOM ตรงๆ ทุกครั้ง เหมือนหน้า Logs/ประวัติการใช้งาน =====
+function escapeHtmlDash(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+// datetime-local ให้ค่าเป็นเวลาท้องถิ่นแบบไม่มี timezone — แปลงเป็น ISO ก่อนส่ง
+function toISODash(v) {
+  return v ? new Date(v).toISOString() : "";
+}
+
+// เลือกไลน์ (ชื่อไลน์ที่ report เข้ามา — ตรงกับฟิลด์ shop) — null = ทุกไลน์
+function getSelectedDashLines() {
+  const list = document.getElementById("dashLineList");
+  if (!list) return null;
+  const boxes = [...list.querySelectorAll("input[type=checkbox]")];
+  if (!boxes.length) return null;
+  const checked = boxes.filter((b) => b.checked).map((b) => b.value);
+  return checked.length === boxes.length ? null : checked;
+}
+
+function buildDashQuery(skip, limit) {
+  const p = new URLSearchParams();
+  p.set("skip", skip);
+  p.set("limit", limit);
+
+  const q = document.getElementById("dashSearch")?.value.trim();
+  if (q) p.set("q", q);
+
+  const status = document.getElementById("dashStatus")?.value;
+  if (status) p.set("status", status);
+
+  const lines = getSelectedDashLines();
+  if (lines) p.set("shops", lines.join(","));
+
+  const from = document.getElementById("dashFrom")?.value;
+  if (from) p.set("from", toISODash(from));
+
+  const to = document.getElementById("dashTo")?.value;
+  if (to) p.set("to", toISODash(to));
+
+  return p.toString();
+}
+
+function isDashFilterActive() {
+  const q = document.getElementById("dashSearch")?.value.trim();
+  const status = document.getElementById("dashStatus")?.value;
+  const from = document.getElementById("dashFrom")?.value;
+  const to = document.getElementById("dashTo")?.value;
+  return !!(q || status || from || to || getSelectedDashLines());
+}
+
+// สลิปใหม่ที่มาจาก SSE — ต้องเช็คกับตัวกรองที่ตั้งไว้ด้วย ไม่ใช่แค่ตัวกรองร้านต่อ user
+function matchesDashFilters(item) {
+  const status = document.getElementById("dashStatus")?.value;
+  if (status && item.status !== status) return false;
+
+  const lines = getSelectedDashLines();
+  if (lines && !lines.includes(item.shop)) return false;
+
+  const q = document.getElementById("dashSearch")?.value.trim().toLowerCase();
+  if (q) {
+    const hay = [item.lineName, item.phoneNumber, item.amount != null ? String(item.amount) : "", item.ref]
+      .filter(Boolean).join(" ").toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+
+  const from = document.getElementById("dashFrom")?.value;
+  const to = document.getElementById("dashTo")?.value;
+  if ((from || to) && item.createdAt) {
+    const t = new Date(item.createdAt).getTime();
+    if (from && t < new Date(from).getTime()) return false;
+    if (to && t > new Date(to).getTime()) return false;
+  }
+
+  return true;
+}
+
+async function loadDashFilterOptions() {
+  try {
+    const res = await fetch("/api/slip-results/filters");
+    const data = await res.json();
+
+    const statusSel = document.getElementById("dashStatus");
+    if (statusSel && Array.isArray(data.statuses)) {
+      statusSel.innerHTML = '<option value="">ทุกกรณีการตรวจสลิป</option>' +
+        data.statuses.map((s) => `<option value="${escapeHtmlDash(s)}">${escapeHtmlDash(s)}</option>`).join("");
+    }
+
+    const list = document.getElementById("dashLineList");
+    if (list && Array.isArray(data.shops)) {
+      list.innerHTML = data.shops.map((s) => `
+        <label class="dashboard-line-item">
+          <input type="checkbox" value="${escapeHtmlDash(s)}" checked onchange="onDashLineChange()">
+          <span>${escapeHtmlDash(s)}</span>
+        </label>`).join("");
+    }
+    updateDashLineAllState();
+    updateDashLineLabel();
+  } catch (err) {
+    console.error("โหลดตัวกรอง dashboard ล้มเหลว:", err);
+  }
+}
+
+function toggleDashLineMenu() {
+  const menu = document.getElementById("dashLineMenu");
+  if (menu) menu.hidden = !menu.hidden;
+}
+
+function toggleDashLineAll(el) {
+  document.querySelectorAll("#dashLineList input[type=checkbox]").forEach((b) => { b.checked = el.checked; });
+  onDashLineChange();
+}
+
+function updateDashLineAllState() {
+  const all = document.getElementById("dashLineAll");
+  if (!all) return;
+  const boxes = [...document.querySelectorAll("#dashLineList input[type=checkbox]")];
+  all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+}
+
+function updateDashLineLabel() {
+  const label = document.getElementById("dashLineLabel");
+  if (!label) return;
+  const sel = getSelectedDashLines();
+  label.textContent = !sel ? "ทุกไลน์" : sel.length ? `เลือก ${sel.length} ไลน์` : "ไม่ได้เลือกไลน์";
+}
+
+function onDashLineChange() {
+  updateDashLineAllState();
+  updateDashLineLabel();
+  loadSlipResults();
+}
+
+// ปิดเมนูเลือกไลน์เมื่อคลิกนอกกล่อง — ผูกครั้งเดียวตอนสคริปต์โหลด (persist ข้ามการเข้าหน้าซ้ำ)
+document.addEventListener("click", (e) => {
+  const filter = document.getElementById("dashLineFilter");
+  const menu = document.getElementById("dashLineMenu");
+  if (filter && menu && !menu.hidden && !filter.contains(e.target)) {
+    menu.hidden = true;
+  }
+});
+
+function clearDashFilters() {
+  const searchEl = document.getElementById("dashSearch");
+  const statusEl = document.getElementById("dashStatus");
+  const fromEl = document.getElementById("dashFrom");
+  const toEl = document.getElementById("dashTo");
+  if (searchEl) searchEl.value = "";
+  if (statusEl) statusEl.value = "";
+  if (fromEl) fromEl.value = "";
+  if (toEl) toEl.value = "";
+  const allBox = document.getElementById("dashLineAll");
+  if (allBox) { allBox.checked = true; toggleDashLineAll(allBox); return; } // toggleDashLineAll เรียก loadSlipResults() ให้แล้ว
+  loadSlipResults();
+}
+
+function setupDashToolbar() {
+  const searchEl = document.getElementById("dashSearch");
+  const statusEl = document.getElementById("dashStatus");
+  const fromEl = document.getElementById("dashFrom");
+  const toEl = document.getElementById("dashTo");
+  const clearEl = document.getElementById("dashClear");
+  const toggleEl = document.getElementById("dashLineToggle");
+  const allEl = document.getElementById("dashLineAll");
+
+  // พิมพ์ค้นหาแล้วรอ 300ms ค่อยยิง (กันยิงถี่)
+  let searchTimer;
+  searchEl?.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadSlipResults(), 300);
+  });
+
+  statusEl?.addEventListener("change", () => loadSlipResults());
+  fromEl?.addEventListener("change", () => loadSlipResults());
+  toEl?.addEventListener("change", () => loadSlipResults());
+  clearEl?.addEventListener("click", () => clearDashFilters());
+  toggleEl?.addEventListener("click", (e) => { e.stopPropagation(); toggleDashLineMenu(); });
+  allEl?.addEventListener("change", () => toggleDashLineAll(allEl));
+}
+
 
 function clearLoadingRow() {
   document.getElementById("loading-row")?.remove();
@@ -64,12 +246,12 @@ function appendSlipRows(rows) {
   tbody.appendChild(frag);
 }
 
-// โหลดครั้งแรก 200 รายการล่าสุด
+// โหลดครั้งแรก 200 รายการล่าสุด (เรียกซ้ำได้ทุกครั้งที่ตัวกรองในแถบเครื่องมือเปลี่ยน — เริ่มนับใหม่จาก skip 0 เสมอ)
 async function loadSlipResults() {
   window.allLoaded = false;
   window.isLoadingMore = false;
   try {
-    const res = await fetch(`/api/slip-results?skip=0&limit=${window.INITIAL_LOAD}`);
+    const res = await fetch(`/api/slip-results?${buildDashQuery(0, window.INITIAL_LOAD)}`);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error("ไม่ใช่ array");
 
@@ -81,9 +263,13 @@ async function loadSlipResults() {
     if (tbody) tbody.innerHTML = "";
     appendSlipRows(data);
 
+    const countEl = document.getElementById("dashCount");
+    if (countEl) countEl.textContent = isDashFilterActive() ? `แสดง ${window.slipResults.length.toLocaleString()} รายการ` : "";
+
     const tb = document.getElementById("slip-results-body");
     if (tb && !tb.querySelector("tr")) {
-      showEmptyRow(getDisplayedPrefixes() ? "ไม่มีข้อมูลตามตัวกรองร้านที่เลือก" : "ยังไม่มีข้อมูลสลิป");
+      showEmptyRow(isDashFilterActive() ? "ไม่พบรายการตามตัวกรองที่เลือก"
+        : getDisplayedPrefixes() ? "ไม่มีข้อมูลตามตัวกรองร้านที่เลือก" : "ยังไม่มีข้อมูลสลิป");
     }
     requestAnimationFrame(fillIfNeeded); // กรองร้านแล้วแถวน้อย → โหลดเพิ่มจนเต็มจอ
   } catch (err) {
@@ -97,12 +283,14 @@ async function loadMoreSlips() {
   if (window.isLoadingMore || window.allLoaded) return;
   window.isLoadingMore = true;
   try {
-    const res = await fetch(`/api/slip-results?skip=${window.serverLoadedCount}&limit=${window.LOAD_MORE}`);
+    const res = await fetch(`/api/slip-results?${buildDashQuery(window.serverLoadedCount, window.LOAD_MORE)}`);
     const data = await res.json();
     if (Array.isArray(data) && data.length) {
       window.slipResults.push(...data);        // ต่อท้าย (เก่ากว่า)
       window.serverLoadedCount += data.length;
       appendSlipRows(data);
+      const countEl = document.getElementById("dashCount");
+      if (countEl && isDashFilterActive()) countEl.textContent = `แสดง ${window.slipResults.length.toLocaleString()} รายการ`;
     }
     if (!Array.isArray(data) || data.length < window.LOAD_MORE) window.allLoaded = true;
   } catch (err) {
@@ -160,6 +348,17 @@ function getStatusReply(status) {
 }
 
 
+// บนมือถือแถบค้นหา+ตัวกรองกินจอเกือบครึ่ง เหลือที่ให้ตารางนิดเดียว
+// เลื่อนดูรายการ = ยุบแถบเก็บไว้ก่อน เลื่อนกลับขึ้นบนสุดค่อยกางคืน (เหมือนหน้า Logs/ประวัติการใช้งาน)
+// ใช้ค่าเข้า/ออกคนละค่า กันกระพริบตอนเลื่อนอยู่แถวเส้นแบ่งพอดี
+function updateDashCompact(container) {
+  const pageEl = document.querySelector(".dashboard-page");
+  if (!pageEl) return;
+  const y = container.scrollTop;
+  if (y > 40) pageEl.classList.add("compact");
+  else if (y < 10) pageEl.classList.remove("compact");
+}
+
 function setupScrollListener() {
   const container = document.getElementById("dashboard-scroll");
   if (!container || container.dataset.scrollBound) return;
@@ -170,6 +369,7 @@ function setupScrollListener() {
   container.addEventListener("scroll", () => {
     // เลื่อนแนวนอน → ให้หัวตารางเลื่อนตาม (คอลัมน์ตรงกัน)
     if (head) head.scrollLeft = container.scrollLeft;
+    updateDashCompact(container);
     // เลื่อนถึงใกล้ล่างสุด → โหลดของเก่าเพิ่มทีละ 100
     if (container.scrollTop + container.clientHeight >= container.scrollHeight - 40) {
       loadMoreSlips();
@@ -242,8 +442,9 @@ function connectSSE() {
         const newSlip = JSON.parse(event.data);
         window.slipResults = window.slipResults || [];
         window.slipResults.unshift(newSlip);
-        // ถ้าร้านนี้ไม่ได้เลือกแสดง → เก็บไว้ใน data แต่ไม่แสดงในตาราง
-        if (!isSlipDisplayed(newSlip.prefix)) return;
+        // ถ้าร้านนี้ไม่ได้เลือกแสดง (ตัวกรองร้านต่อ user) หรือไม่ตรงกับตัวกรองในแถบเครื่องมือ
+        // → เก็บไว้ใน data แต่ไม่แสดงในตาราง
+        if (!isSlipDisplayed(newSlip.prefix) || !matchesDashFilters(newSlip)) return;
         const tbody = document.getElementById("slip-results-body");
         if (tbody) {
           clearLoadingRow(); // เคลียร์ placeholder "ยังไม่มีข้อมูล" ถ้ามี
@@ -378,7 +579,8 @@ function setupPhoneTripleClick() {
 }
 
 function initDashboardSlip() {
-  loadSlipResults();
+  setupDashToolbar();
+  loadDashFilterOptions().then(loadSlipResults); // ต้องรอ options มาก่อน ไม่งั้น dropdown ยังว่างตอน render แถวแรก
   setupScrollListener();
   connectSSE();
   setupPhoneInputHandlers();

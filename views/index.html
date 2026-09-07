@@ -409,6 +409,9 @@
             }
 
             // มาจากการกดการแจ้งเตือน → เลื่อนไปหา log ที่ใกล้เวลานั้นที่สุดแล้วไฮไลต์
+            // ถ้าใกล้ที่สุดยังห่างเกินไป แปลว่าไม่มี log จริงของเหตุการณ์นี้ (เกิดจาก log หลุดหาย
+            // ไม่ใช่แค่กรองไม่เจอ) — ไม่ควรไฮไลต์ log อื่นที่ไม่เกี่ยวข้องแทน
+            const JUMP_MAX_DIFF_MS = 15000
             function jumpToTargetLog() {
               const target = window.__logsJumpTo
               if (!target) return
@@ -421,7 +424,10 @@
                 const diff = Math.abs(new Date(el.dataset.ts).getTime() - want)
                 if (diff < bestDiff) { bestDiff = diff; best = el }
               })
-              if (!best) return
+              if (!best || bestDiff > JUMP_MAX_DIFF_MS) {
+                countEl.textContent = "ไม่พบ log ที่ตรงกับการแจ้งเตือนนี้"
+                return
+              }
               best.classList.add("log-highlight")
               best.scrollIntoView({ block: "center", behavior: "smooth" })
               setTimeout(() => best.classList.remove("log-highlight"), 4000)

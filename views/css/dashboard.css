@@ -11,6 +11,248 @@
   overflow: hidden;
 }
 
+/* ===== แถบค้นหา/ตัวกรอง — โครงเดียวกับหน้าประวัติการใช้งาน (audit.css) ===== */
+.dashboard-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dashboard-search {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 340px;
+}
+
+.dashboard-search i {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.dashboard-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px 9px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--white);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dashboard-search input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+.dashboard-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.dashboard-filters input[type="datetime-local"] {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--white);
+  outline: none;
+}
+
+.dashboard-filters input[type="datetime-local"]:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+/* dropdown ที่มีไอคอนนำหน้า — กรณีการตรวจสลิป */
+.dashboard-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dashboard-select > i {
+  position: absolute;
+  left: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.dashboard-select select {
+  appearance: none;
+  padding: 7px 28px 7px 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  max-width: 190px;
+}
+
+.dashboard-select select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-muted);
+}
+
+.dashboard-select::after {
+  content: "";
+  position: absolute;
+  right: 11px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--text-muted);
+  border-bottom: 1.6px solid var(--text-muted);
+  transform: translateY(-2px) rotate(45deg);
+  pointer-events: none;
+}
+
+.dashboard-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.dashboard-clear-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: var(--white);
+}
+
+/* กว้างคงที่ไว้เสมอ (ไม่ใช้ :empty { display: none }) — ไม่งั้นพอมี/ไม่มีข้อความ
+   ปุ่มกลุ่มขวาจะขยับตำแหน่งไปมาทุกครั้งที่ค้นหา */
+.dashboard-count {
+  flex: 0 0 auto;
+  width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ===== เลือกไลน์ (multi-select) — checkbox dropdown แบบเดียวกับตัวกรองร้านหน้าหลัก ===== */
+.dashboard-line-filter {
+  position: relative;
+}
+
+.dashboard-line-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.dashboard-line-toggle:hover {
+  border-color: var(--blue);
+}
+
+.dashboard-line-toggle i.bi-broadcast {
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.dashboard-line-caret {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.dashboard-line-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+}
+
+.dashboard-line-menu[hidden] {
+  display: none;
+}
+
+.dashboard-line-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dashboard-line-item:hover {
+  background: var(--blue-muted);
+}
+
+.dashboard-line-item input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dashboard-line-all {
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 0;
+  margin-bottom: 4px;
+}
 
 .dashboard-container {
   flex: 1;

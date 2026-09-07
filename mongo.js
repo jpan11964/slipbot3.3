@@ -5,6 +5,7 @@ import path from "path";
 import dotenv from "dotenv";
 import fs from "fs";
 import { addNotification } from "./utils/notificationStore.js";
+import { broadcastLog } from "./index.js";
 
 // บังคับ Node.js c-ares ใช้ Google DNS โดยตรง — เฉพาะ Windows เท่านั้น
 // แก้ปัญหา querySrv ECONNREFUSED บน Windows ที่ localhost DNS ไม่ตอบสนอง
@@ -31,6 +32,7 @@ export async function connectDB() {
     console.log("MongoDB connected successfully");
   } catch (err) {
     console.error("❌ MongoDB connect failed:", err.message);
+    broadcastLog(`เชื่อมต่อฐานข้อมูลไม่ได้: ต่อ MongoDB ไม่สำเร็จ กำลังลองใหม่อัตโนมัติ (${err.message})`);
     addNotification({
       key: "system:mongo_connect_failed",
       level: "error",
@@ -51,6 +53,7 @@ let reconnecting = false;
 mongoose.connection.on("disconnected", () => {
   if (!reconnecting) {
     console.warn("⚠️ MongoDB disconnected. Reconnecting...");
+    broadcastLog("ฐานข้อมูลหลุดการเชื่อมต่อ: MongoDB หลุดการเชื่อมต่อ กำลังเชื่อมต่อใหม่อัตโนมัติ");
     addNotification({
       key: "system:mongo_disconnected",
       level: "warn",
@@ -69,6 +72,7 @@ mongoose.connection.on("disconnected", () => {
 // เมื่อ error → log ไว้
 mongoose.connection.on("error", (err) => {
   console.error("❌ MongoDB error:", err.message);
+  broadcastLog(`ฐานข้อมูลขัดข้อง: MongoDB error: ${err.message}`);
   addNotification({
     key: "system:mongo_error",
     level: "error",
