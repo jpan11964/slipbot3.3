@@ -482,7 +482,14 @@ app.post("/api/update-bank-status", async (req, res) => {
       return res.status(404).json({ success: false, message: "ไม่พบบัญชีธนาคาร" });
     }
 
+    const wasOn = accounts[index].status === true;
     accounts[index].status = status;
+
+    // จับเวลาตอน "เปลี่ยนจากเปิด → ปิด" เท่านั้น
+    // กดปิดซ้ำบัญชีที่ปิดอยู่แล้วต้องไม่รีเซ็ตเวลา ไม่งั้นช่วงผ่อนผันจะยืดออกไปเรื่อยๆ
+    if (wasOn && status === false) accounts[index].disabledAt = new Date();
+    if (status === true) accounts[index].disabledAt = undefined;   // เปิดกลับมาแล้วไม่ต้องผ่อนผัน
+
     await accounts[index].save(); // สำคัญมาก ต้อง save หลังเปลี่ยนค่า
 
     await loadBankAccounts();     // รีโหลด global variable ให้บอทเห็นค่าที่เปลี่ยน
@@ -1366,7 +1373,14 @@ app.post("/api/update-line", async (req, res) => {
     };
 
     await shop.save();
-    return res.json({ success: true, message: "อัปเดตบัญชี LINE สำเร็จ!" });
+
+    // ตรวจทันทีหลังแก้ไข ด้วยเหตุผลเดียวกับตอนเพิ่ม (ดู /api/add-line)
+    const check = await checkLineAccount(prefix, { channel_id, secret_token, linename });
+    return res.json({
+      success: true,
+      message: "อัปเดตบัญชี LINE สำเร็จ!",
+      check: { problems: check.problems, webhook: check.webhook, flags: check.flags },
+    });
   } catch (error) {
     console.error("❌ Error updating LINE account:", error);
     return res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในการอัปเดตบัญชี LINE" });
@@ -1459,7 +1473,15 @@ app.post("/api/add-line", async (req, res) => {
     await shop.save();
 
     restartWebhooks();
-    res.json({ success: true, message: "เพิ่มบัญชี LINE สำเร็จ!" });
+
+    // ตรวจให้เลยตั้งแต่ตอนเพิ่ม — เดิมบันทึกแล้วขึ้นไฟเขียวทันทีโดยไม่ตรวจอะไร
+    // ไลน์ที่ปิด "Use webhook" ไว้จึงดูเหมือนใช้งานได้ กว่าจะรู้ว่าใช้ไม่ได้ก็ตอนลูกค้าทักมาแล้วบอทเงียบ
+    const check = await checkLineAccount(prefix, { channel_id, secret_token, linename });
+    res.json({
+      success: true,
+      message: "เพิ่มบัญชี LINE สำเร็จ!",
+      check: { problems: check.problems, webhook: check.webhook, flags: check.flags },
+    });
   } catch (error) {
     console.error("❌ Error adding LINE account:", error);
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาดในการเพิ่มบัญชี LINE" });
@@ -1965,13 +1987,24 @@ async function checkLineAccount(prefix, line) {
       result.webhook.matched = String(ep.endpoint || "") === expected;
       result.webhook.ok = result.webhook.matched && result.webhook.active;
 
-      if (!ep.endpoint) result.problems.push("ยังไม่ได้ตั้ง Webhook URL ที่ฝั่ง LINE");
-      else if (!result.webhook.matched) result.problems.push("Webhook URL ไม่ตรงกับของระบบ");
-      if (ep.endpoint && ep.active === false) result.problems.push('ปิด "Use webhook" อยู่ที่ฝั่ง LINE');
+      if (!ep.endpoint) {
+        result.problems.push("ยังไม่ได้ตั้ง Webhook URL ที่ฝั่ง LINE");
+        result.reason = "url";
+      } else if (!result.webhook.matched) {
+        result.problems.push("Webhook URL ไม่ตรงกับของระบบ");
+        result.reason = "url";
+      }
+      // ปิด Use webhook ไว้ = กด "ตั้ง Webhook URL" กี่รอบก็ไม่หาย ต้องไปเปิดที่ LINE เอง
+      // จึงให้สาเหตุนี้ทับ "url" เสมอ เพราะเป็นตัวที่ผู้ใช้ต้องไปแก้ก่อน
+      if (ep.endpoint && ep.active === false) {
+        result.problems.push('ปิด "Use webhook" อยู่ที่ฝั่ง LINE');
+        result.reason = "inactive";
+      }
     }
   } catch (err) {
     result.webhook.ok = false;
     result.problems.push(`ตรวจ Webhook ไม่สำเร็จ: ${err.message}`);
+    result.reason = result.reason || "url";
   }
 
   // ---- 3) ให้ LINE ลองยิงมาจริง (ตรวจเฉพาะตอน URL ตรงแล้ว) ----
@@ -1986,16 +2019,18 @@ async function checkLineAccount(prefix, line) {
       result.delivery = { ok: t.success === true, statusCode: t.statusCode, reason: t.reason, detail: t.detail };
       if (t.success !== true) {
         result.problems.push(`LINE ส่งมาที่ Webhook ไม่ถึง (${t.detail || t.reason || testRes.status})`);
+        result.reason = result.reason || "delivery";
       }
     } catch (err) {
       result.delivery = { ok: false, detail: err.message };
       result.problems.push(`ทดสอบส่งไป Webhook ไม่สำเร็จ: ${err.message}`);
+      result.reason = result.reason || "delivery";
     }
   }
 
   const webhookBad = result.problems.length > 0;
-  await setLineWebhookError({ prefix, channelId, bad: webhookBad });
-  result.flags = { tokenError: false, webhookError: webhookBad };
+  await setLineWebhookError({ prefix, channelId, bad: webhookBad, reason: result.reason || "" });
+  result.flags = { tokenError: false, webhookError: webhookBad, webhookErrorReason: result.reason || "" };
   return result;
 }
 
@@ -2099,14 +2134,30 @@ async function applyWebhookToLine(prefix, line) {
     });
     if (!putRes.ok) {
       const err = await putRes.json().catch(() => ({}));
-      await setLineWebhookError({ prefix, channelId, bad: true });
+
+      // 401 = LINE ไม่ยอมรับ token (ไลน์ถูกระงับ / channel ถูกลบ / secret เปลี่ยน)
+      // ไม่ใช่เรื่อง webhook — ต้องติดธง tokenError ไม่งั้นหน้าเว็บจะบอกให้ "กดตั้ง Webhook URL"
+      // ซึ่งกดอีกกี่รอบก็เจอ 401 เหมือนเดิม กลายเป็นวนลูป
+      if (putRes.status === 401) {
+        await markLineTokenError({ prefix, channelId, linename, reason: err.message || "401 Unauthorized" });
+        return {
+          success: false,
+          linename,
+          channelId,
+          tokenFailed: true,
+          message: "LINE ไม่ยอมรับ access token ของไลน์นี้ — ไลน์อาจถูกระงับหรือถูกลบ กรุณาตรวจสอบไลน์นี้",
+          flags: { tokenError: true, webhookError: line.webhookError === true },
+        };
+      }
+
+      await setLineWebhookError({ prefix, channelId, bad: true, reason: "url" });
       return {
         success: false,
         linename,
         channelId,
         webhook: { expected },
         message: `ตั้ง Webhook ไม่สำเร็จ: ${err.message || putRes.status}`,
-        flags: { tokenError: false, webhookError: true },
+        flags: { tokenError: false, webhookError: true, webhookErrorReason: "url" },
       };
     }
 
@@ -2137,12 +2188,23 @@ async function applyWebhookToLine(prefix, line) {
     // URL ตั้งถูกแล้ว = งานของปุ่มนี้สำเร็จ
     // ส่วน "LINE ยิงมาไม่ถึง" มักเป็นเพราะเซิร์ฟเวอร์กำลังตื่นจากหลับ (Render free tier)
     // ไม่ใช่การตั้งค่าผิด จึงไม่ติดธงแดง แค่บอกให้รู้ว่ายังทดสอบไม่ผ่าน
-    const stillBad = result.webhook.matched === false;
-    await setLineWebhookError({ prefix, channelId, bad: stillBad });
+    //
+    // แต่ "ปิด Use webhook" ต้องติดธงแดง — เดิมเช็คแค่ matched ไลน์ที่ปิด Use webhook ไว้
+    // จึงขึ้นเขียวว่าปกติทั้งที่บอทไม่มีทางได้รับข้อความเลย (เป็นบั๊กที่เจอตอนเพิ่มไลน์ใหม่)
+    // และตั้ง URL ซ้ำกี่รอบก็ไม่หาย ต้องไปเปิดสวิตช์ที่ LINE Developers เอง
+    const inactive = result.webhook.active === false;
+    const urlBad = result.webhook.matched === false;
+    const stillBad = urlBad || inactive;
+    const reason = inactive ? "inactive" : urlBad ? "url" : "";
+    await setLineWebhookError({ prefix, channelId, bad: stillBad, reason });
 
     return {
-      success: true, linename, channelId, ...result,
-      flags: { tokenError: false, webhookError: stillBad },
+      success: !inactive, linename, channelId, ...result,
+      inactive,
+      message: inactive
+        ? 'ตั้ง Webhook URL แล้ว แต่ไลน์นี้ปิด "Use webhook" อยู่ที่ฝั่ง LINE — ต้องเข้าไปเปิดใน LINE Developers เองก่อน บอทถึงจะได้รับข้อความ'
+        : undefined,
+      flags: { tokenError: false, webhookError: stillBad, webhookErrorReason: reason },
     };
 }
 

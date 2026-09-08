@@ -12,7 +12,12 @@ import { broadcastLog } from "../index.js";
  * @param {string} toName - ชื่อผู้รับ
  * @param {string} toBank - ชื่อธนาคารปลายทาง
  */
-export async function sendMessageRight(replyToken, client, formattedTransactionDateTime, transRef, amount, fromName, fromBank, fromAccount, toName, toBank ,toAccount) {
+/**
+ * @param {string} extraNotice - ข้อความเตือนต่อท้าย (ไม่บังคับ) ส่งไปในการ reply ครั้งเดียวกัน
+ *                               ไม่แยกเป็น pushMessage เพราะ replyToken ใช้ได้ครั้งเดียว
+ *                               และ LINE รับได้สูงสุด 5 ข้อความต่อการ reply หนึ่งครั้งอยู่แล้ว
+ */
+export async function sendMessageRight(replyToken, client, formattedTransactionDateTime, transRef, amount, fromName, fromBank, fromAccount, toName, toBank ,toAccount, extraNotice = "") {
     const flexMessage = {
       "type": "bubble",
       "hero": {
@@ -269,9 +274,16 @@ export async function sendMessageRight(replyToken, client, formattedTransactionD
 
       try {
         // ส่งข้อความผ่าน LINE Messaging API
-        await client.replyMessage(replyToken, { type: "flex", altText: "🟢 สลิปถูกต้องและใหม่", contents: flexMessage });
+        const messages = [{ type: "flex", altText: "🟢 สลิปถูกต้องและใหม่", contents: flexMessage }];
+        if (extraNotice) messages.push({ type: "text", text: extraNotice });
+
+        await client.replyMessage(replyToken, messages);
         console.log("ตอบกลับแล้ว สลิปถูกต้องและใหม่ ✔");
         broadcastLog("ตอบกลับแล้ว สลิปถูกต้องและใหม่ ✔");
+        if (extraNotice) {
+          console.log("ส่งข้อความเตือนให้ตรวจบัญชีฝากที่หน้าเว็บต่อท้ายแล้ว");
+          broadcastLog("ส่งข้อความเตือนให้ตรวจบัญชีฝากที่หน้าเว็บต่อท้ายแล้ว");
+        }
     } catch (err) {
         console.error("❌ เกิดข้อผิดพลาดในการส่งข้อความ Flex Message:", err.message || err);
         broadcastLog("❌ เกิดข้อผิดพลาดในการส่งข้อความ Flex Message:", err.message || err);

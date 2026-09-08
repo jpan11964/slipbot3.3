@@ -30,6 +30,17 @@ import timezone from 'dayjs/plugin/timezone.js';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+// ต่อท้ายข้อความ "สลิปถูกต้อง" เมื่อร้านปิดการตรวจบัญชีปลายทางทั้งที่มีบัญชีอยู่ในระบบ
+// เพราะกรณีนั้นระบบไม่ได้ยืนยันเลยว่าโอนเข้าบัญชีไหน ถ้าลูกค้าโอนตามบัญชีเก่าในประวัติ
+// จะไม่มีอะไรมาดักให้ — จึงต้องเตือนให้ไปดูบัญชีล่าสุดที่หน้าเว็บทุกครั้ง
+const CHECK_ACCOUNT_NOTICE =
+  "กรุณาตรวจสอบบัญชีฝากที่หน้าเว็บทุกครั้งก่อนทำรายการโอน " +
+  "รบกวนไม่ทำรายการโอนตามประวัตินะคะ ธนาคารมีการเปลี่ยนอยู่ตลอดเวลา ขอบคุณค่ะ🙏😁";
+
+// ผ่อนผันหลังกดปิดบัญชี — สลิปที่โอนเข้าบัญชีนั้นยังผ่านแบบเงียบๆ ได้ในช่วงนี้
+// (ลูกค้าเห็นเลขบัญชีบนหน้าเว็บก่อนร้านสลับบัญชี แล้วกำลังโอนอยู่พอดี ไม่ควรโดนตีตก)
+const BANK_DISABLE_GRACE_MS = 5 * 60 * 1000;
+
 export async function handleRegularSlip(
   client,
   messageId,
@@ -74,17 +85,24 @@ export async function handleRegularSlip(
       qrDatabase.set(qrData, qrEntry);
       saveQRDatabaseToFile(prefix, qrDatabase);
 
+        // ต้องต่อข้อความเตือนให้ไปดูบัญชีล่าสุดที่หน้าเว็บไหม
+        // ติดธงเมื่อสลิป "ผ่าน" ทั้งที่ระบบไม่ได้ยืนยันว่าโอนเข้าบัญชีที่ร้านใช้อยู่จริง
+        let needAccountNotice = false;
+
         if (!checkBankAccount) {
           // ร้านปิดสวิตช์ "ตรวจบัญชีปลายทาง" ไว้ — ข้ามด่านนี้ แต่ยังตรวจยอดเงิน/วันที่ต่อตามปกติ
           console.log("ข้ามการตรวจสอบบัญชี ร้านปิดการตรวจบัญชีปลายทางไว้.... ");
           broadcastLog("ข้ามการตรวจสอบบัญชี ร้านปิดการตรวจบัญชีปลายทางไว้.... ");
+          // ร้านที่ยังไม่มีบัญชีในระบบเลยไม่ต้องเตือน — เตือนไปก็ไม่มีบัญชีให้ไปดูที่หน้าเว็บ
+          needAccountNotice = bankList.length > 0;
         } else if (bankList.length === 0) {
         } else {
           const activeAccounts = bankList.filter(acc => acc.status === true); //คัดเฉพาะบัญชีที่เปิด
-      
+
               if (activeAccounts.length === 0) {
                 console.log("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
                 broadcastLog("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
+                needAccountNotice = true;   // ไม่ได้ยืนยันบัญชีเหมือนกัน จึงต้องเตือนเหมือนกรณีปิดสวิตช์
               } else {
                 const receiverAccount = data.receiver?.account?.bank?.account || "";
 
@@ -131,6 +149,28 @@ export async function handleRegularSlip(
                   } else {
                     console.log(`❌ หมายเลขบัญชีไม่ตรงกับ: ${receiverAccount}`);
                     broadcastLog(`❌ หมายเลขบัญชีไม่ตรงกับ: ${receiverAccount}`);
+                  }
+                }
+
+                // ไม่ตรงบัญชีที่เปิดอยู่ → ลองเทียบกับบัญชีของร้านที่ "ปิดไป" ก่อนตีตก
+                // เพราะเงินเข้าบัญชีของร้านจริง แค่ร้านสลับบัญชีไปแล้ว การตีตกทำให้ลูกค้าเดือดร้อนเกินเหตุ
+                //   ปิดไปไม่เกิน 5 นาที = ลูกค้าน่าจะเห็นเลขบัญชีก่อนร้านสลับ แล้วกำลังโอนอยู่พอดี → ผ่านเงียบๆ
+                //   ปิดไปนานแล้ว        = โอนตามประวัติเก่า → ผ่านได้ แต่ต้องเตือนให้ไปดูบัญชีล่าสุดที่หน้าเว็บ
+                if (!accountMatched) {
+                  const disabledMatch = bankList.find(acc =>
+                    acc.status !== true && isAccountNumberMatch(receiverAccount, acc.account));
+
+                  if (disabledMatch) {
+                    const disabledAt = disabledMatch.disabledAt ? new Date(disabledMatch.disabledAt).getTime() : 0;
+                    const withinGrace = disabledAt > 0 && (Date.now() - disabledAt) < BANK_DISABLE_GRACE_MS;
+
+                    accountMatched = true;
+                    needAccountNotice = !withinGrace;
+                    const howLong = withinGrace
+                      ? `เพิ่งปิดไปไม่ถึง ${BANK_DISABLE_GRACE_MS / 60000} นาที ผ่อนผันให้ผ่าน`
+                      : "ปิดมานานแล้ว ผ่านแต่แนบข้อความเตือน";
+                    console.log(`🟡 โอนเข้าบัญชีที่ปิดอยู่: ${disabledMatch.account} — ${howLong}`);
+                    broadcastLog(`🟡 โอนเข้าบัญชีที่ปิดอยู่: ${disabledMatch.account} — ${howLong}`);
                   }
                 }
 
@@ -237,6 +277,7 @@ export async function handleRegularSlip(
             // หากผ่านทุกการตรวจสอบ ตอบกลับว่า "สลิปถูกต้องและใหม่"
             console.log("🟢 สลิปถูกต้อง");
             broadcastLog("🟢 สลิปถูกต้อง");
+
             // ตอบกลับหลัก
             await sendMessageRight(
               replyToken,
@@ -249,7 +290,8 @@ export async function handleRegularSlip(
               data.sender?.account?.bank?.account || "ไม่ระบุ",
               data.receiver?.account?.name || "ไม่ระบุ",
               toBank,
-              data.receiver?.account?.bank?.account || "ไม่ระบุ"
+              data.receiver?.account?.bank?.account || "ไม่ระบุ",
+              needAccountNotice ? CHECK_ACCOUNT_NOTICE : ""
             );
 
 

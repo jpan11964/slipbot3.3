@@ -65,6 +65,23 @@ document.addEventListener("click", (e) => {
     if (!e.target.closest(".row-menu")) closeAllRowMenus();
 });
 
+// แจ้งผลตรวจที่ backend ทำให้ตอนเพิ่ม/แก้ไขไลน์ — ผ่านก็บอกว่าผ่าน ไม่ผ่านก็บอกว่าติดอะไร
+// เดิมบันทึกเสร็จแล้วปิด modal เงียบๆ ไลน์ที่ใช้งานไม่ได้จริงจึงขึ้นไฟเขียวไปก่อน
+// กว่าจะรู้ว่าพังก็ตอนลูกค้าทักเข้ามาแล้วบอทไม่ตอบ
+function reportLineCheck(linename, check, verb = "เพิ่ม") {
+    if (!check) return;
+    const problems = check.problems || [];
+    if (!problems.length) {
+        showLineToast(`${verb} "${linename}" เรียบร้อย — ตรวจแล้วใช้งานได้ปกติ`, true);
+        return;
+    }
+    flashLineTooltip(linename);
+    showLineToast(`"${linename}" บันทึกแล้ว แต่ยังใช้งานไม่ได้`, false, {
+        detailLines: problems,
+        webhook: check.webhook,
+    });
+}
+
 function renderLineItem(prefix, line, index) {
     // ไฟสถานะใช้ช่องเดียวกัน — แดง = มีปัญหา / เทา = ร้านปิดบอทอยู่ / เขียว = ทำงานปกติ
     // แยกออกมานอก .row-name เพื่อให้ทุกแถวเรียงตรงกัน และไม่โดน ... ตัดไอคอนทิ้ง
@@ -73,12 +90,19 @@ function renderLineItem(prefix, line, index) {
     // (เครื่องหมายนี้ต้องอยู่จนกว่าจะแก้สำเร็จหรือลบไลน์ทิ้ง)
     const shopOff = shopData.find(s => s.prefix === prefix)?.status === false;
 
-    // แดงได้ 2 สาเหตุ — token ใช้ไม่ได้ หรือ Webhook ตั้งผิด/ยิงมาไม่ถึง
-    // ข้อความบอกให้ตรงสาเหตุ จะได้รู้ว่าต้องกดเมนูไหนแก้
+    // ข้อความต้องบอกวิธีแก้ให้ตรงสาเหตุจริง ไม่งั้นผู้ใช้วนลูป
+    // (เคยขึ้น "กดตั้ง Webhook URL เพื่อแก้" ทุกกรณี — พอสาเหตุจริงคือปิด Use webhook
+    //  ที่ฝั่ง LINE หรือไลน์ถูกระงับ กดกี่รอบก็ไม่หาย เพราะกดผิดที่ตั้งแต่แรก)
+    // ห้ามใช้ " ในข้อความ — มันไปปิด attribute data-tip="..." ทำให้ tooltip ขาดกลางคัน
+    const WEBHOOK_TIPS = {
+        inactive: "ไลน์นี้ปิด 'Use webhook' อยู่ที่ฝั่ง LINE — ต้องเข้าไปเปิดใน LINE Developers เอง",
+        url: "Webhook URL ไม่ถูกต้อง กดเมนู 'ตั้ง Webhook URL' เพื่อแก้",
+        delivery: "ตั้ง Webhook URL ถูกแล้ว แต่ LINE ยิงมาไม่ถึง — ลองกด 'ตรวจสอบไลน์' อีกครั้ง",
+    };
+
     const problemTip = line.tokenError
         ? "ไลน์หลุดการเชื่อมต่อ กรุณาตรวจสอบ หรือลบไลน์นี้"
-        // ห้ามใช้ " ในข้อความ — มันไปปิด attribute data-tip="..." ทำให้ tooltip ขาดกลางคัน
-        : "Webhook URL ไม่ถูกต้อง กดเมนู 'ตั้ง Webhook URL' เพื่อแก้";
+        : WEBHOOK_TIPS[line.webhookErrorReason] || WEBHOOK_TIPS.url;
 
     const statusIcon = (line.tokenError || line.webhookError)
         ? `<span class="line-status line-token-error" data-tip="${problemTip}"><i class="bi bi-exclamation-circle-fill"></i></span>`
@@ -226,6 +250,9 @@ function applyLineFlags(prefix, index, flags) {
 
     if (typeof flags.tokenError === "boolean") line.tokenError = flags.tokenError;
     if (typeof flags.webhookError === "boolean") line.webhookError = flags.webhookError;
+    // ต้องทาสาเหตุด้วย ไม่งั้นไฟเปลี่ยนเป็นแดงทันทีแต่ข้อความยังเป็นของสาเหตุเก่า
+    // จนกว่า loadShopLines() จะยิง API มาทับ
+    if ("webhookErrorReason" in flags) line.webhookErrorReason = flags.webhookErrorReason || "";
     renderLineList(prefix);
 }
 
@@ -649,7 +676,8 @@ async function saveNewLine() {
         if (apiResult.success) {
         setLineModalLoading("addLineModal", false); // เคลียร์ก่อนปิด จะได้ไม่เด้งถามยืนยัน
         closeAddLineModal();
-        loadShopLines(currentShopPrefix);
+        await loadShopLines(currentShopPrefix);
+        reportLineCheck(lineName, apiResult.check, "เพิ่ม");   // เจอปัญหาตั้งแต่ตอนเพิ่ม ต้องบอกเลย ไม่ใช่ปล่อยขึ้นเขียว
         } else {
         if (status === 400) {
             showAlertMessage("❌ กรุณากรอก ข้อมูลให้ครบถ้วน!", "alertMessageAddline", false);
@@ -853,6 +881,7 @@ async function saveEditedLine() {
             await loadShopLines(currentEditingPrefix);
             setLineModalLoading("editLineModal", false); // เคลียร์ก่อนปิด จะได้ไม่เด้งถามยืนยัน
             closeEditLineModal();
+            reportLineCheck(newLineName, apiResult.check, "แก้ไข");
         } else {
             if (apiResponse.status === 409) {
                 showAlertMessage("❌ ไม่สามารถบันทึกได้: บัญชีนี้มีอยู่แล้ว (Channel ID ซ้ำ)", "alertMessageEditLine", false);

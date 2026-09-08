@@ -79,13 +79,14 @@ const inflight = new Map(); // channelId -> Promise<newToken|null>
 // ---- ทำเครื่องหมาย "Webhook มีปัญหา" ----
 // ธงแยกจาก tokenError เพราะ startTokenRefreshScheduler() ล้าง tokenError ทุก 4 วัน
 // ถ้าใช้ธงเดียวกัน ไฟแดงของ webhook จะหายไปเองทั้งที่ยังไม่ได้แก้
-export async function setLineWebhookError({ prefix, channelId, bad }) {
+// reason = สาเหตุ ("inactive" | "url" | "delivery") — หน้าเว็บใช้เลือกข้อความบอกวิธีแก้ให้ตรงเรื่อง
+export async function setLineWebhookError({ prefix, channelId, bad, reason = "" }) {
   try {
     await Shop.updateOne(
       { prefix, "lines.channel_id": String(channelId) },
       bad
-        ? { $set: { "lines.$.webhookError": true, "lines.$.webhookErrorAt": new Date() } }
-        : { $set: { "lines.$.webhookError": false }, $unset: { "lines.$.webhookErrorAt": "" } }
+        ? { $set: { "lines.$.webhookError": true, "lines.$.webhookErrorAt": new Date(), "lines.$.webhookErrorReason": reason } }
+        : { $set: { "lines.$.webhookError": false }, $unset: { "lines.$.webhookErrorAt": "", "lines.$.webhookErrorReason": "" } }
     );
   } catch (err) {
     console.error("ทำเครื่องหมาย webhook ไม่สำเร็จ:", err.message);

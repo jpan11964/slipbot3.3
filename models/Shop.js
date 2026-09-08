@@ -13,6 +13,13 @@ const LineSchema = new mongoose.Schema({
     // ถ้าเอา webhook มารวมธงเดียวกัน ไฟแดงจะหายทั้งที่ webhook ยังตั้งผิดอยู่
     webhookError: Boolean,   // true = Webhook URL ที่ LINE ไม่ตรงกับของระบบ / ยิงมาไม่ถึง
     webhookErrorAt: Date,
+    // สาเหตุที่ webhook ใช้ไม่ได้ — ต้องรู้เพื่อบอกผู้ใช้ให้ตรงเรื่อง
+    // เดิมเก็บแค่ true/false หน้าเว็บเลยขึ้นข้อความเดียวว่า "กดตั้ง Webhook URL เพื่อแก้" ทุกกรณี
+    // ซึ่งวนลูปเมื่อสาเหตุจริงคือปิด "Use webhook" ไว้ที่ฝั่ง LINE (กดตั้งกี่รอบก็ไม่หาย)
+    //   "inactive" = ปิด Use webhook ไว้ที่ LINE   → ต้องไปเปิดใน LINE Developers เอง
+    //   "url"      = ยังไม่ตั้ง / URL ไม่ตรง        → กด "ตั้ง Webhook URL" แก้ได้
+    //   "delivery" = URL ถูกแล้วแต่ LINE ยิงมาไม่ถึง → มักเป็นเซิร์ฟเวอร์ยังไม่ตื่น
+    webhookErrorReason: String,
 }, { _id: false });
 
 const ShopSchema = new mongoose.Schema({
