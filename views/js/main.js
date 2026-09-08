@@ -1416,7 +1416,13 @@ function openBankModal(prefix) {
             const listContainer = document.getElementById("bank-list");
             const bankTitle = document.getElementById("BankTitle");
 
+            const checkSlot = document.getElementById("bank-check-slot");
+            const addSlot = document.getElementById("bank-add-slot");
+
             listContainer.innerHTML = "";
+            if (checkSlot) checkSlot.innerHTML = "";
+            if (addSlot) addSlot.innerHTML = "";
+
             const shop = shopData.find(s => s.prefix === prefix);
             if (shop) {
                 shop.bankAccounts = accounts;
@@ -1437,11 +1443,10 @@ function openBankModal(prefix) {
                     onchange="updateBankCheckStatus('${prefix}', this.checked, this)">
                 <span class="slider round"></span>
               </label>`;
-                listContainer.appendChild(toggleBox);
+                (checkSlot || listContainer).appendChild(toggleBox);
             }
 
             if (accounts.length === 0) {
-                // ต้อง appendChild ไม่ใช่ innerHTML= ไม่งั้นสวิตช์ที่เพิ่งใส่ไปด้านบนโดนล้างทิ้ง
                 const empty = document.createElement("p");
                 empty.textContent = "ยังไม่มีบัญชีธนาคารสำหรับร้านนี้";
                 listContainer.appendChild(empty);
@@ -1472,16 +1477,12 @@ function openBankModal(prefix) {
                 });
             }
 
-            // เพิ่มปุ่มด้านล่างรายการ
+            // ปุ่มเพิ่มอยู่นอกกล่องที่เลื่อน จะได้กดได้เสมอแม้บัญชีจะเยอะจนต้องเลื่อน
             const addBtn = document.createElement("button");
             addBtn.className = "btn btn-add-bank";
             addBtn.textContent = "+ เพิ่มธนาคารใหม่";
-            addBtn.style.marginTop = "30px";
-            addBtn.style.fontSize = "16px";
-            addBtn.style.padding = "10px 20px";
-            addBtn.style.borderRadius = "8px";
             addBtn.addEventListener("click", () => openAddBankModal(prefix));
-            listContainer.appendChild(addBtn);
+            (addSlot || listContainer).appendChild(addBtn);
             
             modal.style.display = "flex";
         })

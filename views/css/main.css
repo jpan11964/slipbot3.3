@@ -650,12 +650,46 @@
   text-align: center;
 }
 
-/* กว้างกว่าหน่อยเพราะมีสวิตช์เปิด-ปิดเพิ่มมาอีกช่อง */
+/* กว้างกว่าหน่อยเพราะมีสวิตช์เปิด-ปิดเพิ่มมาอีกช่อง
+   ร้านที่มีบัญชีหลายสิบใบเคยดันกล่องยาวเกินจอจนปุ่ม X ลอยพ้นขอบบน กดปิดไม่ได้เลย
+   → จำกัดความสูงไว้ แล้วให้เฉพาะ "รายการบัญชี" เลื่อน ส่วนหัว/สวิตช์/ปุ่มเพิ่มตรึงไว้
+   ใช้ dvh ไม่ใช่ vh — บนมือถือ vh รวมพื้นที่ใต้แถบเบราว์เซอร์ด้วย กล่องจะสูงเกินจอจริง */
 .main-page .bank-modal-content {
   padding: 32px;
   width: 560px;
   min-height: 200px;
+  max-height: 85dvh;
+  display: flex;
+  flex-direction: column;
   text-align: center;
+}
+
+/* min-height: 0 จำเป็น — ไม่งั้น flex item จะไม่ยอมหดต่ำกว่าความสูงเนื้อหา แล้ว overflow ไม่ทำงาน */
+.main-page .bank-modal-content #bank-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* เลื่อนจนสุดรายการแล้วไม่ลามไปเลื่อนหน้าเบื้องหลัง */
+}
+
+.main-page .bank-modal-content #bank-check-slot:empty,
+.main-page .bank-modal-content #bank-add-slot:empty {
+  display: none;   /* ไม่มีเนื้อหาก็ไม่ต้องกินที่ */
+}
+
+.main-page .bank-modal-content #bank-add-slot {
+  flex-shrink: 0;
+  padding-top: 20px;
+}
+
+.main-page .bank-modal-content #bank-check-slot {
+  flex-shrink: 0;
+}
+
+.main-page .btn-add-bank {
+  font-size: 16px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
 }
 
 .main-page .Line-modal-content {

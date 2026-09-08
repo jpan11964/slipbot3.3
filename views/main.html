@@ -172,7 +172,11 @@
     <div class="bank-modal-content">
         <span class="modal-close" onclick="closeBankModal()">&times;</span>
         <h2 id="BankTitle" class="BankTitle">รายการบัญชีธนาคารร้าน:</h2>
+      <!-- แยก 3 ส่วน: สวิตช์ตรึงบน / รายการเลื่อนได้ / ปุ่มเพิ่มตรึงล่าง
+           ร้านที่มีบัญชีเยอะๆ จะได้ยังกดปุ่ม X และปุ่มเพิ่มได้เสมอ ไม่ต้องเลื่อนหา -->
+      <div id="bank-check-slot"></div>
       <div id="bank-list"></div>
+      <div id="bank-add-slot"></div>
     </div>
   </div>
 
