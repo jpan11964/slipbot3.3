@@ -10,7 +10,7 @@ export const ALL_PAGES = ["main", "dashboard", "customers", "logs", "settings", 
 export const ALL_SHOP_BUTTONS = ["toggle", "line", "bank", "setbot", "edit", "delete", "addshop"];
 
 // ฟังก์ชันย่อยภายในปุ่ม "ตั้งค่าบอท"
-export const ALL_SETBOT_FUNCS = ["withdraw", "textbot", "slipoption", "bonustime", "password"];
+export const ALL_SETBOT_FUNCS = ["withdraw", "textbot", "slipoption", "bankcheck", "bonustime", "password"];
 
 // สิทธิ์ผู้จัดการ — หน้าที่ OWNER มอบให้ ADMIN ได้ (จัดการสิทธิ์ / จัดการ prefix)
 export const ALL_ADMIN_PAGES = ["permissions", "prefixes", "audit"];
@@ -46,6 +46,7 @@ export const SETBOT_FUNC_LABELS = {
   withdraw: "ปิด/เปิดการถอน",
   textbot: "ปิด/เปิดบอทตอบข้อความ",
   slipoption: "ตัวเลือกการตรวจสลิป",
+  bankcheck: "ปิด/เปิดการตรวจบัญชีปลายทาง",
   bonustime: "ปิด/เปิดการตอบ BonusTime",
   password: "ปิด/เปิดการตอบ ลืม password",
 };
@@ -68,6 +69,7 @@ export const ROUTE_SETBOT_MAP = {
   "/api/update-withdraw-status": "withdraw",
   "/api/update-textbot-status": "textbot",
   "/api/update-slip-option": "slipoption",
+  "/api/update-bankcheck-status": "bankcheck",
   "/api/update-bonusTime-status": "bonustime",
   "/api/upload-bonus-image": "bonustime",
   "/api/upload-change-bonus-image": "bonustime",

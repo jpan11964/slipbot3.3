@@ -465,6 +465,29 @@
 }
 
 /* Bank row */
+/* สวิตช์ "ตรวจบัญชีปลายทาง" บนสุดของกล่องรายการบัญชี — คุมทั้งกล่อง ไม่ใช่บัญชีใบใดใบหนึ่ง
+   จึงแยกพื้นหลังและมีเส้นคั่นหนากว่าแถวบัญชีปกติ ให้เห็นชัดว่าคนละระดับกัน */
+.main-page .bank-check-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* .switch-label เดิมตั้ง margin-bottom + จัดกึ่งกลางไว้สำหรับกล่องแนวตั้งในโมดัลตั้งค่าบอท
+   แถวนี้เป็นแนวนอน จึงต้องปลดออก ไม่งั้นข้อความลอยสูงกว่าสวิตช์ */
+.main-page .bank-check-toggle .switch-label {
+  margin-bottom: 0;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .main-page .bank-row {
   display: flex;
   justify-content: space-between;

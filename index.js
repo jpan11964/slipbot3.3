@@ -418,6 +418,11 @@ app.post("/api/add-bank", async (req, res) => {
     return res.status(400).json({ success: false, message: "ข้อมูลไม่ครบ" });
   }
 
+  // เลขบัญชีต้องเป็นตัวเลขล้วน — หน้าเว็บกรองให้แล้ว แต่ client ข้ามได้ จึงกันซ้ำที่นี่
+  if (!/^\d+$/.test(String(number))) {
+    return res.status(400).json({ success: false, message: "เลขบัญชีต้องเป็นตัวเลขเท่านั้น" });
+  }
+
   try {
     await BankAccount.create({
       prefix,
@@ -444,6 +449,11 @@ app.post("/api/edit-bank", async (req, res) => {
     typeof number !== "string"
   ) {
     return res.status(400).json({ success: false, message: "ข้อมูลไม่ครบหรือไม่ถูกต้อง" });
+  }
+
+  // เลขบัญชีต้องเป็นตัวเลขล้วน — เหตุผลเดียวกับ /api/add-bank
+  if (!/^\d+$/.test(number)) {
+    return res.status(400).json({ success: false, message: "เลขบัญชีต้องเป็นตัวเลขเท่านั้น" });
   }
 
   try {
@@ -1744,6 +1754,29 @@ app.post('/api/update-withdraw-status', async (req, res) => {
     res.json({ success: true, message: "อัปเดตสถานะ ปิด/เปิด การถอน เรียบร้อย" });
   } catch (err) {
     console.error("❌ Error updating withdraw status:", err);
+    res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
+  }
+});
+
+// เปิด/ปิดการตรวจว่าบัญชีปลายทางในสลิปตรงกับบัญชีของร้านไหม
+// ปิดแล้ว = ข้ามด่านนี้ไปเลย แต่ยังตรวจยอดเงิน/วันที่/สลิปซ้ำตามปกติ
+app.post("/api/update-bankcheck-status", async (req, res) => {
+  const { prefix, statusBankCheck } = req.body;
+
+  try {
+    const shop = await Shop.findOneAndUpdate(
+      { prefix },
+      { statusBankCheck },
+      { new: true }
+    );
+
+    if (!shop) {
+      return res.json({ success: false, message: "ไม่พบร้านค้า" });
+    }
+
+    res.json({ success: true, message: "อัปเดตสถานะ ปิด/เปิด การตรวจบัญชีปลายทาง เรียบร้อย" });
+  } catch (err) {
+    console.error("❌ Error updating bank check status:", err);
     res.status(500).json({ success: false, message: "เกิดข้อผิดพลาด" });
   }
 });

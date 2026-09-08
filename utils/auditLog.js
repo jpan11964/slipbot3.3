@@ -95,6 +95,7 @@ export const AUDIT_ACTIONS = {
   "/api/update-textbot-status": { action: "setbot.textbot", label: "เปิด/ปิดบอทตอบข้อความ", target: b => pick(b, "prefix"), detail: b => onOff(b?.statusBot ?? b?.status) },
   "/api/update-withdraw-status": { action: "setbot.withdraw", label: "เปิด/ปิดการถอน", target: b => pick(b, "prefix"), detail: b => onOff(b?.statusWithdraw ?? b?.status) },
   "/api/update-slip-option": { action: "setbot.slipOption", label: "เปลี่ยนตัวเลือกตรวจสลิป", target: b => pick(b, "prefix"), detail: b => pick(b, "slipCheckOption", "option") },
+  "/api/update-bankcheck-status": { action: "setbot.bankCheck", label: "เปิด/ปิดการตรวจบัญชีปลายทาง", target: b => pick(b, "prefix"), detail: b => onOff(b?.statusBankCheck ?? b?.status) },
   "/api/update-bonusTime-status": { action: "setbot.bonusTime", label: "เปิด/ปิดการตอบ BonusTime", target: b => pick(b, "prefix"), detail: b => onOff(b?.statusBonusTime ?? b?.status) },
   "/api/update-password-status": { action: "setbot.password", label: "เปิด/ปิดการตอบลืมรหัสผ่าน", target: b => pick(b, "prefix"), detail: b => onOff(b?.statusPassword ?? b?.status) },
 

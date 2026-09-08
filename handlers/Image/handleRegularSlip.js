@@ -44,7 +44,8 @@ export async function handleRegularSlip(
   isNew,
   replyInfoDeposit,
   phoneNumber,
-  baseURL
+  baseURL,
+  checkBankAccount = true   // สวิตช์ "ปิด/เปิดการตรวจบัญชีปลายทาง" ของร้าน (default เปิด)
 ) {
   try {
     const now = Date.now();
@@ -73,7 +74,11 @@ export async function handleRegularSlip(
       qrDatabase.set(qrData, qrEntry);
       saveQRDatabaseToFile(prefix, qrDatabase);
 
-        if (bankList.length === 0) {
+        if (!checkBankAccount) {
+          // ร้านปิดสวิตช์ "ตรวจบัญชีปลายทาง" ไว้ — ข้ามด่านนี้ แต่ยังตรวจยอดเงิน/วันที่ต่อตามปกติ
+          console.log("ข้ามการตรวจสอบบัญชี ร้านปิดการตรวจบัญชีปลายทางไว้.... ");
+          broadcastLog("ข้ามการตรวจสอบบัญชี ร้านปิดการตรวจบัญชีปลายทางไว้.... ");
+        } else if (bankList.length === 0) {
         } else {
           const activeAccounts = bankList.filter(acc => acc.status === true); //คัดเฉพาะบัญชีที่เปิด
       
@@ -81,7 +86,38 @@ export async function handleRegularSlip(
                 console.log("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
                 broadcastLog("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
               } else {
-                const receiverAccount = data.receiver?.account?.bank?.account || "ไม่ระบุ";
+                const receiverAccount = data.receiver?.account?.bank?.account || "";
+
+                // ไม่มีเลขบัญชีปลายทางให้ตรวจเลย — เกิดได้ 2 กรณี
+                //   1) Slip2Go ไม่คืนฟิลด์นี้มา (ข้อมูลไม่ครบ)
+                //   2) ธนาคารมาสก์ไว้หมดทุกหลัก (xxx-x-xxxxx-x) ไม่เหลือเลขให้เทียบ
+                //
+                // ห้ามตอบ "บัญชีปลายทางผิด" เพราะสลิปอาจโอนถูกบัญชีจริงๆ แค่ข้อมูลไม่มา
+                // (ของเดิมตกมาถึงลูปข้างล่างแล้วไม่ตรงสักบัญชี → กล่าวหาลูกค้าผิด)
+                // และห้ามปล่อยผ่าน เพราะถ้ามาสก์หมดทุกหลักจะกลายเป็นไวลด์การ์ดที่ตรงกับทุกบัญชี
+                // → ส่งให้แอดมินตรวจแทน แบบเดียวกับสลิปต้องสงสัย/ตรวจไม่ทัน
+                if (!/[0-9]/.test(receiverAccount)) {
+                  const shown = receiverAccount || "ไม่มีข้อมูล";
+                  console.log(`🟡 สลิปไม่มีเลขบัญชีปลายทางให้ตรวจสอบ (ค่าที่ได้: ${shown})`);
+                  broadcastLog(`🟡 สลิปไม่มีเลขบัญชีปลายทางให้ตรวจสอบ (ค่าที่ได้: ${shown})`);
+                  setBotSentReplyWait(userId);
+                  await sendMessageWait3(replyToken, client);
+                  await reportResultToAPI( baseURL, {
+                    time: thaiTime,
+                    shop: linename,
+                    lineName,
+                    prefix,
+                    status: "ตรวจบัญชีปลายทางไม่ได้",
+                    response: "ตอบกลับแล้ว",
+                    amount: Amount,
+                    ref: qrData,
+                    userId: userId,
+                    phoneNumber,
+                    reply: "🟡 น้องแอดมินกำลังตรวจสอบให้นะค้าา ขออภัยที่ล่าช้านะ ขอเวลา 1-2 นาทีค่า",
+                  });
+                  return { amount: Amount };
+                }
+
                 let accountMatched = false;
             
                 for (const account of activeAccounts) {

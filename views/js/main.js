@@ -1423,8 +1423,28 @@ function openBankModal(prefix) {
                 bankTitle.textContent = `รายการบัญชีธนาคารร้าน: ${shop.name}`;
             }
 
+            // สวิตช์เปิด/ปิดการตรวจบัญชีปลายทาง — อยู่บนสุดของกล่องนี้เพราะมันคุมว่า
+            // บัญชีที่อยู่ในรายการข้างล่างจะถูกเอาไปเทียบกับสลิปหรือไม่
+            // เงื่อนไขสิทธิ์ต้องเป็น canSetbot("bankcheck") ให้ตรงกับที่ backend บังคับ
+            // (ROUTE_SETBOT_MAP) ไม่งั้นจะเห็นสวิตช์แต่กดแล้วโดน 403
+            if (canSetbot("bankcheck")) {
+                const toggleBox = document.createElement("div");
+                toggleBox.className = "bank-check-toggle";
+                toggleBox.innerHTML = `
+              <label class="switch-label">ปิด / เปิดการตรวจบัญชีปลายทาง</label>
+              <label class="switch">
+                <input type="checkbox" ${shop?.statusBankCheck !== false ? "checked" : ""}
+                    onchange="updateBankCheckStatus('${prefix}', this.checked, this)">
+                <span class="slider round"></span>
+              </label>`;
+                listContainer.appendChild(toggleBox);
+            }
+
             if (accounts.length === 0) {
-                listContainer.innerHTML = "<p>ยังไม่มีบัญชีธนาคารสำหรับร้านนี้</p>";
+                // ต้อง appendChild ไม่ใช่ innerHTML= ไม่งั้นสวิตช์ที่เพิ่งใส่ไปด้านบนโดนล้างทิ้ง
+                const empty = document.createElement("p");
+                empty.textContent = "ยังไม่มีบัญชีธนาคารสำหรับร้านนี้";
+                listContainer.appendChild(empty);
             } else {
                 accounts.forEach((account, index) => {
                     const row = document.createElement("div");
@@ -1586,6 +1606,21 @@ function showAlertMessage(message, elementId = "alertMessageEditBank", isSuccess
 }
 
 
+// ช่องเลขบัญชีรับเฉพาะตัวเลข — ตัดขีด เว้นวรรค และอักขระอื่นทิ้งทันทีที่พิมพ์/วาง
+// เก็บตำแหน่งเคอร์เซอร์ไว้ด้วย ไม่งั้นแก้เลขกลางช่องแล้วเคอร์เซอร์เด้งไปท้ายสุดทุกครั้ง
+function onlyDigits(input) {
+    const before = input.value;
+    const caret = input.selectionStart;
+    const cleaned = before.replace(/\D/g, "");
+    if (cleaned === before) return;
+
+    // นับว่าตัวอักษรที่ถูกตัดทิ้งอยู่ก่อนเคอร์เซอร์กี่ตัว แล้วขยับเคอร์เซอร์กลับเท่านั้น
+    const removedBeforeCaret = before.slice(0, caret).replace(/\d/g, "").length;
+    input.value = cleaned;
+    const pos = Math.max(0, caret - removedBeforeCaret);
+    input.setSelectionRange(pos, pos);
+}
+
 function saveNewBank() {
     const modal = document.getElementById("addbankModal");
     const prefix = modal.dataset.prefix; // ดึง prefix จาก modal
@@ -1594,6 +1629,12 @@ function saveNewBank() {
 
     if (!name || !number) {
         showAlertMessage("กรุณากรอกชื่อบัญชีและเลขบัญชีให้ครบ", "alertMessageAddBank", false);
+        return;
+    }
+
+    // กันไว้อีกชั้น เผื่อค่าเข้ามาทางอื่นที่ไม่ผ่าน oninput (autofill / แก้ผ่าน devtools)
+    if (!/^\d+$/.test(number)) {
+        showAlertMessage("เลขบัญชีต้องเป็นตัวเลขเท่านั้น ห้ามมีขีด เว้นวรรค หรืออักขระอื่น", "alertMessageAddBank", false);
         return;
     }
 
@@ -1627,6 +1668,11 @@ function saveEditedBank() {
 
     if (!name || !number) {
         showAlertMessage("กรุณากรอกชื่อบัญชีและเลขบัญชีให้ครบ", "alertMessageEditBank", false);
+        return;
+    }
+
+    if (!/^\d+$/.test(number)) {
+        showAlertMessage("เลขบัญชีต้องเป็นตัวเลขเท่านั้น ห้ามมีขีด เว้นวรรค หรืออักขระอื่น", "alertMessageEditBank", false);
         return;
     }
 
@@ -1827,6 +1873,30 @@ async function updateWithdrawStatus(prefix, newWithdrawStatus) {
         }
     } catch (error) {
         console.error("❌ Error updating withdraw status:", error);
+    }
+}
+
+async function updateBankCheckStatus(prefix, newBankCheckStatus, checkbox) {
+    try {
+        const response = await fetch("/api/update-bankcheck-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prefix, statusBankCheck: newBankCheckStatus })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+            console.error(`❌ ไม่สามารถอัปเดตสถานะตรวจบัญชีปลายทาง: ${result.message}`);
+            if (checkbox) checkbox.checked = !newBankCheckStatus;   // บันทึกไม่สำเร็จ = ดีดสวิตช์กลับ อย่าให้เห็นค่าที่ไม่ตรงกับ DB
+            return;
+        }
+        // sync cache ด้วย — openShopSetBotModal() อ่านค่าจาก shopData
+        // ถ้าไม่อัปเดต พอปิดแล้วเปิด modal ใหม่สวิตช์จะเด้งกลับค่าเดิมทั้งที่บันทึกไปแล้ว
+        const shop = shopData.find(s => s.prefix === prefix);
+        if (shop) shop.statusBankCheck = newBankCheckStatus;
+    } catch (error) {
+        console.error("❌ Error updating bank check status:", error);
+        if (checkbox) checkbox.checked = !newBankCheckStatus;
     }
 }
 

@@ -187,7 +187,11 @@
         </div>
         <div class="input-group">
           <label for="bankAccountNumber">เลขบัญชี:</label>
-          <input type="text" id="bankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
+          <!-- oninput ไม่ใช่ addEventListener — main.js รันครั้งเดียวต่อ session แต่ HTML ก้อนนี้
+               ถูกฉีดใหม่ทุกครั้งที่เข้าหน้าหลัก listener ที่ผูกไว้ตอน top-level จะหลุดไปกับ DOM เก่า -->
+          <input type="text" id="bankAccountNumber" inputmode="numeric"
+                 placeholder="กรอกเลขบัญชี (ไม่ต้องใส่เว้นวรรค หรือ -)"
+                 autocomplete="off" oninput="onlyDigits(this)">
         </div>
         <div id="alertMessageAddBank" class="alert-message-Bank"></div>
         <button class="btn btn-shop-save" onclick="saveNewBank()">บันทึก</button>
@@ -204,7 +208,9 @@
         </div>
         <div class="input-group">
           <label for="editBankAccountNumber">เลขบัญชี:</label>
-          <input type="text" id="editBankAccountNumber" placeholder="กรอกเลขบัญชี (ไม่ต้องเว้นวรรค)" autocomplete="off">
+          <input type="text" id="editBankAccountNumber" inputmode="numeric"
+                 placeholder="กรอกเลขบัญชี (ไม่ต้องใส่เว้นวรรค หรือ -)"
+                 autocomplete="off" oninput="onlyDigits(this)">
         </div>
         <div id="alertMessageEditBank" class="alert-message-Bank"></div>
         <button class="btn btn-shop-save" onclick="saveEditedBank()">บันทึก</button>

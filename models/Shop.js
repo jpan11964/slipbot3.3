@@ -31,6 +31,10 @@ const ShopSchema = new mongoose.Schema({
     statusWithdraw: Boolean,
     statusBonusTime: Boolean,
     statusPassword: Boolean,
+    // ตรวจว่าบัญชีปลายทางในสลิปตรงกับบัญชีของร้านไหม
+    // default: true และฝั่งโค้ดเช็คด้วย !== false — ร้านเก่าที่ยังไม่มีฟิลด์นี้จึงยังตรวจอยู่เหมือนเดิม
+    // (ถ้าเช็คแบบ truthy ตรงๆ ร้านเก่าทั้งหมดจะกลายเป็น "ปิดตรวจ" เงียบๆ ทันทีที่ deploy)
+    statusBankCheck: { type: Boolean, default: true },
     status: Boolean,
     slipCheckOption: String,
     registerlink: String,

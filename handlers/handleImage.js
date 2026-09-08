@@ -453,7 +453,10 @@ if (shop.slipCheckOption === "duplicate") {
       isNew,
       replyInfoDeposit,
       phoneNumber,
-      baseURL
+      baseURL,
+      // ร้านเก่าที่ยังไม่มีฟิลด์นี้ (undefined) ต้องถือว่า "เปิดตรวจ" ไว้ก่อน
+      // ถ้าเช็คแบบ truthy ตรงๆ ร้านเดิมทั้งหมดจะกลายเป็นปิดตรวจเงียบๆ ทันทีที่ deploy
+      shop.statusBankCheck !== false
     );
     if (slipData && slipData.amount !== undefined) {
       qrEntry.amount = slipData.amount;
