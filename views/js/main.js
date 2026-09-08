@@ -1431,9 +1431,9 @@ function openBankModal(prefix) {
 
             // สวิตช์เปิด/ปิดการตรวจบัญชีปลายทาง — อยู่บนสุดของกล่องนี้เพราะมันคุมว่า
             // บัญชีที่อยู่ในรายการข้างล่างจะถูกเอาไปเทียบกับสลิปหรือไม่
-            // เงื่อนไขสิทธิ์ต้องเป็น canSetbot("bankcheck") ให้ตรงกับที่ backend บังคับ
-            // (ROUTE_SETBOT_MAP) ไม่งั้นจะเห็นสวิตช์แต่กดแล้วโดน 403
-            if (canSetbot("bankcheck")) {
+            // ใช้สิทธิ์ "bank" ตัวเดียวกับปุ่มที่เปิดกล่องนี้ ให้ตรงกับที่ backend บังคับ
+            // (ROUTE_BUTTON_MAP) ไม่งั้นจะเห็นสวิตช์แต่กดแล้วโดน 403
+            if (canBtn("bank")) {
                 const toggleBox = document.createElement("div");
                 toggleBox.className = "bank-check-toggle";
                 toggleBox.innerHTML = `
