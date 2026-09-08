@@ -483,12 +483,21 @@ app.post("/api/update-bank-status", async (req, res) => {
     }
 
     const wasOn = accounts[index].status === true;
+    // ก่อนเปลี่ยนค่า — ดูว่ามีใบอื่นเปิดอยู่ไหม ใช้ตัดสินว่าใบนี้คือ "ใบแรกของร้าน" หรือเปล่า
+    const otherActive = accounts.some((acc, i) => i !== index && acc.status === true);
+
     accounts[index].status = status;
 
     // จับเวลาตอน "เปลี่ยนจากเปิด → ปิด" เท่านั้น
     // กดปิดซ้ำบัญชีที่ปิดอยู่แล้วต้องไม่รีเซ็ตเวลา ไม่งั้นช่วงผ่อนผันจะยืดออกไปเรื่อยๆ
     if (wasOn && status === false) accounts[index].disabledAt = new Date();
-    if (status === true) accounts[index].disabledAt = undefined;   // เปิดกลับมาแล้วไม่ต้องผ่อนผัน
+
+    if (status === true) {
+      accounts[index].disabledAt = undefined;   // เปิดกลับมาแล้วไม่ต้องผ่อนผันขาปิด
+      // เปิดใบแรกของร้าน = หน่วงการเริ่มตรวจไว้ 30 วิ ให้แอดมินทยอยเปิดใบที่เหลือได้ทัน
+      // ถ้ามีใบอื่นเปิดอยู่แล้วต้องล้างค่าเก่าทิ้ง ไม่งั้นสแตมป์เดิมค้างแล้วไปหน่วงผิดจังหวะภายหลัง
+      accounts[index].firstEnabledAt = otherActive ? undefined : new Date();
+    }
 
     await accounts[index].save(); // สำคัญมาก ต้อง save หลังเปลี่ยนค่า
 
@@ -1978,9 +1987,22 @@ async function checkLineAccount(prefix, line) {
     });
     const ep = await epRes.json().catch(() => ({}));
 
+    // 401 ตรงนี้ = ออก token มาได้ แต่ LINE ไม่ยอมรับตอนเอาไปใช้จริง
+    // (channel ถูกระงับ / ถูกลบ / ปิด Messaging API) = ไลน์หลุดการเชื่อมต่อ ไม่ใช่เรื่อง webhook
+    // ต้องติดธง tokenError ไม่งั้นข้อความที่ ! จะบอกให้ไปกด "ตั้ง Webhook URL"
+    // ซึ่งกดแล้วก็เจอ 401 เหมือนเดิม กลายเป็นวนลูป
+    if (epRes.status === 401) {
+      result.token = { ok: false, message: ep.message || "401 Unauthorized" };
+      result.problems.push("ไลน์หลุดการเชื่อมต่อ — LINE ไม่ยอมรับ access token ของไลน์นี้ กรุณาตรวจสอบ หรือลบไลน์นี้");
+      await markLineTokenError({ prefix, channelId, linename, reason: ep.message || "401 ตอนอ่านค่า webhook" });
+      result.flags = { tokenError: true, webhookError: line.webhookError === true };
+      return result;   // token ใช้ไม่ได้ ตรวจ webhook ต่อไปก็ไม่มีความหมาย
+    }
+
     if (!epRes.ok) {
       result.webhook.ok = false;
       result.problems.push(`อ่านค่า Webhook จาก LINE ไม่ได้ (${ep.message || epRes.status})`);
+      result.reason = result.reason || "url";
     } else {
       result.webhook.endpoint = ep.endpoint || "";
       result.webhook.active = ep.active === true;

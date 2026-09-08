@@ -41,6 +41,11 @@ const CHECK_ACCOUNT_NOTICE =
 // (ลูกค้าเห็นเลขบัญชีบนหน้าเว็บก่อนร้านสลับบัญชี แล้วกำลังโอนอยู่พอดี ไม่ควรโดนตีตก)
 const BANK_DISABLE_GRACE_MS = 5 * 60 * 1000;
 
+// ผ่อนผันหลังเปิดบัญชี "ใบแรก" ของร้าน — ยังไม่เริ่มตรวจจริงในช่วงนี้
+// แอดมินมักทยอยเปิดทีละใบ ถ้าเริ่มตรวจทันทีที่เปิดใบแรก สลิปที่โอนเข้าบัญชีที่ยังไม่ทันเปิด
+// จะโดนต่อข้อความเตือนทั้งที่บัญชีนั้นกำลังจะถูกเปิดอยู่แล้ว
+const BANK_ENABLE_GRACE_MS = 30 * 1000;
+
 export async function handleRegularSlip(
   client,
   messageId,
@@ -99,10 +104,22 @@ export async function handleRegularSlip(
         } else {
           const activeAccounts = bankList.filter(acc => acc.status === true); //คัดเฉพาะบัญชีที่เปิด
 
-              if (activeAccounts.length === 0) {
-                console.log("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
-                broadcastLog("ข้ามการตรวจสอบบัญชี ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ.... ");
-                needAccountNotice = true;   // ไม่ได้ยืนยันบัญชีเหมือนกัน จึงต้องเตือนเหมือนกรณีปิดสวิตช์
+              // ยังไม่เปิดบัญชีไหนเลย = ร้านยังไม่ได้เริ่มใช้การตรวจ ผ่านเงียบๆ ไม่ต้องเตือน
+              // (จะเริ่มเตือนเมื่อร้านเปิดบัญชีอย่างน้อย 1 ใบแล้วเท่านั้น)
+              //
+              // เพิ่งเปิดบัญชี "ใบแรก" ไปไม่ถึง 30 วิ ก็ยังไม่เริ่มตรวจเหมือนกัน
+              // เพราะแอดมินกำลังทยอยเปิดบัญชีที่เหลืออยู่ ถ้าเริ่มตรวจทันที
+              // สลิปที่โอนเข้าบัญชีที่ยังไม่ทันเปิดจะโดนต่อข้อความเตือนทั้งที่ไม่ได้ผิดอะไร
+              const firstEnabledAt = Math.max(
+                0, ...activeAccounts.map(acc => (acc.firstEnabledAt ? new Date(acc.firstEnabledAt).getTime() : 0)));
+              const settingUp = firstEnabledAt > 0 && (Date.now() - firstEnabledAt) < BANK_ENABLE_GRACE_MS;
+
+              if (activeAccounts.length === 0 || settingUp) {
+                const why = activeAccounts.length === 0
+                  ? "ไม่มีบัญชีที่เปิดใช้ในการตรวจสอบ"
+                  : `เพิ่งเปิดบัญชีใบแรกไม่ถึง ${BANK_ENABLE_GRACE_MS / 1000} วิ รอให้เปิดบัญชีที่เหลือก่อน`;
+                console.log(`ข้ามการตรวจสอบบัญชี ${why}.... `);
+                broadcastLog(`ข้ามการตรวจสอบบัญชี ${why}.... `);
               } else {
                 const receiverAccount = data.receiver?.account?.bank?.account || "";
 
