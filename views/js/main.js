@@ -219,7 +219,15 @@ async function checkLine(prefix, index) {
         const data = await res.json();
         applyLineFlags(prefix, index, data.flags);   // ไฟเปลี่ยนสีพร้อมข้อความ ไม่ต้องรอ API รอบสอง
 
-        if (data.success) {
+        if (data.success && data.warnings?.length) {
+            // ตั้งค่าถูกหมดแล้ว แค่ LINE ทดสอบส่งมาไม่ถึง — ไม่ใช่สิ่งที่ผู้ใช้แก้ได้จากหน้านี้
+            // ข้อความเดียวกับปุ่ม "ตั้ง Webhook URL" จะได้ไม่สับสนว่าสองปุ่มพูดไม่ตรงกัน
+            showLineToast(
+                `"${line.linename}" ตั้งค่าถูกต้องแล้ว — แต่ทดสอบส่งยังไม่ผ่าน ` +
+                `ถ้าเซิร์ฟเวอร์เพิ่งตื่น ลองกด "ตรวจสอบไลน์" ซ้ำอีกครั้ง`,
+                true,
+                { detailLines: data.warnings });
+        } else if (data.success) {
             showLineToast(`"${line.linename}" ใช้งานได้ปกติ — token และ Webhook ถูกต้อง`, true);
         } else {
             flashLineTooltip(line.linename);   // ชี้ให้เห็นว่าเป็นไลน์ไหน

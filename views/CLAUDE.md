@@ -280,7 +280,15 @@ setLineModalLoading(modalId, isLoading, message)  // overlay กำลังเ�
 |---|---|---|
 | 1. token | `client_credentials` ออก token ได้ไหม | `markLineTokenError()` → ไฟแดง + แจ้งเตือน แล้วหยุด |
 | 2. webhook | `GET /v2/bot/channel/webhook/endpoint` ตรงกับ `${URL}/webhook/${prefix}/${4หลักท้าย}.bot` ไหม + `active` ไหม | รายงานใน `problems` |
-| 3. delivery | `POST /v2/bot/channel/webhook/test` ให้ LINE ยิงมาจริง | รายงานใน `problems` |
+| 3. delivery | `POST /v2/bot/channel/webhook/test` ให้ LINE ยิงมาจริง | รายงานใน `warnings` (**ไม่ติดธงแดง**) |
+
+> **ชั้น 3 ต้องเป็น `warnings` ไม่ใช่ `problems`** — ให้ตรงกับปุ่ม "ตั้ง Webhook URL"
+> ที่ไม่นับ delivery เป็นความผิด (ดูหัวข้อ "LINE ยิงมาไม่ถึง" ด้านล่าง)
+> เคยนับเป็น `problems` จึงเกิดอาการ **กดตั้งแล้วขึ้นเขียว กดตรวจซ้ำกลับขึ้นแดง** ทั้งที่สถานะเดิมทุกอย่าง
+
+> **webhook route ห้ามดึงรูปมาด้วย** — `Shop.findOne({ prefix }, { lines: 1 }).lean()`
+> เคย findOne ไม่ใส่ projection → ลากรูป BonusTime/รหัสผ่าน (หลาย MB) มาทุกครั้งที่ LINE ยิงมา
+> บน Render ตอบ LINE ไม่ทัน → `webhook/test` ขึ้น "Request timeout" เป็นหลายร้านพร้อมกัน
 
 toast จะโชว์ทั้ง URL ที่ LINE ตั้งไว้และ URL ที่ถูกต้อง เพื่อให้ก๊อปไปแก้ได้เลย
 

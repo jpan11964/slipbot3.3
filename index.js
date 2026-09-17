@@ -189,7 +189,12 @@ app.post("/webhook/:prefix/:channelTag", async (req, res) => {
     const prefix = req.params.prefix;
     const channelId4 = String(req.params.channelTag).replace(/\.bot$/i, ""); // "2480.bot" → "2480"
 
-    const shop = await Shop.findOne({ prefix });
+    // ดึงแค่ lines — route นี้ไม่ได้ใช้รูปเลย
+    // เดิม findOne ไม่ใส่ projection จึงลาก bonusImage + passwordImage (Buffer หลาย MB) มาทุกครั้งที่ LINE ยิงมา
+    // บน Render (CPU น้อย) + Atlas อ่านรูปก้อนใหญ่ช้าจนตอบ LINE ไม่ทัน → "Request timeout"
+    // ร้านที่อัปโหลดรูป BonusTime/รหัสผ่านไว้จึงโดนเยอะ ทั้งที่ตั้งค่า webhook ถูกต้องทุกอย่าง
+    // .lean() ข้ามการสร้าง Mongoose document ไปด้วย — ใช้แค่อ่านค่า ไม่ต้องการ method ของ document
+    const shop = await Shop.findOne({ prefix }, { lines: 1 }).lean();
     const lineAccount = shop?.lines?.find(
       (l) => String(l.channel_id).slice(-4) === channelId4
     );
@@ -1956,7 +1961,9 @@ async function checkLineAccount(prefix, line) {
   const channelId = String(line.channel_id);
   const linename = line.linename || `channel ...${channelId.slice(-4)}`;
   const expected = `${baseURL}/webhook/${prefix}/${channelId.slice(-4)}.bot`;
-  const result = { channelId, linename, token: {}, webhook: { expected }, delivery: {}, problems: [] };
+  // problems = ปัญหาจริงที่ต้องไปแก้ (ติดธงแดง)
+  // warnings = ตั้งค่าถูกหมดแล้ว แต่ทดสอบส่งไม่ผ่าน (ไม่ติดธงแดง แค่แจ้งให้รู้)
+  const result = { channelId, linename, token: {}, webhook: { expected }, delivery: {}, problems: [], warnings: [] };
 
   if (!line.secret_token) {
     result.token.ok = false;
@@ -2039,14 +2046,15 @@ async function checkLineAccount(prefix, line) {
       });
       const t = await testRes.json().catch(() => ({}));
       result.delivery = { ok: t.success === true, statusCode: t.statusCode, reason: t.reason, detail: t.detail };
+      // ทดสอบส่งไม่ผ่าน ≠ ตั้งค่าผิด — ใส่เป็น warning ไม่ใช่ problem
+      // เดิมนับเป็น problem จึงติดธงแดง ขัดกับปุ่ม "ตั้ง Webhook URL" ที่ไม่นับ (applyWebhookToLine)
+      // ผลคือกดตั้งแล้วขึ้นเขียว กดตรวจซ้ำกลับขึ้นแดง ทั้งที่สถานะไลน์เหมือนเดิมทุกอย่าง
       if (t.success !== true) {
-        result.problems.push(`LINE ส่งมาที่ Webhook ไม่ถึง (${t.detail || t.reason || testRes.status})`);
-        result.reason = result.reason || "delivery";
+        result.warnings.push(`LINE ทดสอบส่งมาที่ Webhook ไม่ถึง (${t.detail || t.reason || testRes.status})`);
       }
     } catch (err) {
       result.delivery = { ok: false, detail: err.message };
-      result.problems.push(`ทดสอบส่งไป Webhook ไม่สำเร็จ: ${err.message}`);
-      result.reason = result.reason || "delivery";
+      result.warnings.push(`ทดสอบส่งไป Webhook ไม่สำเร็จ: ${err.message}`);
     }
   }
 
